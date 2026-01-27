@@ -57,33 +57,26 @@ public static class MauiProgram
 			var app = builder.Build();
 			Console.WriteLine("DEBUG: MauiApp built successfully");
 
-			// Initialize database asynchronously - don't block the UI thread
-			_ = Task.Run(async () =>
+			// Initialize database synchronously before app starts
+			try
 			{
-				try
-				{
-					await Task.Delay(500); // Give Blazor time to start
-					Console.WriteLine("DEBUG: Creating database scope...");
-					using var scope = app.Services.CreateScope();
-					var context = scope.ServiceProvider.GetRequiredService<JournalDbContext>();
-					var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInit");
-					logger.LogInformation("Initializing database at: {DbPath}", dbPath);
-					Console.WriteLine($"Initializing database at: {dbPath}");
-					
-					await DatabaseInitializer.InitializeAsync(context);
-					
-					logger.LogInformation("Database initialized successfully");
-					Console.WriteLine("Database initialized successfully");
-				}
-				catch (Exception ex)
-				{
-					var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInit");
-					logger.LogError(ex, "Failed to initialize database: {Message}", ex.Message);
-					Console.WriteLine($"ERROR: Database initialization failed: {ex.Message}");
-					Console.WriteLine($"Stack: {ex.StackTrace}");
-					Console.WriteLine($"Inner: {ex.InnerException?.Message}");
-				}
-			});
+				Console.WriteLine("DEBUG: Creating database scope...");
+				using var scope = app.Services.CreateScope();
+				var context = scope.ServiceProvider.GetRequiredService<JournalDbContext>();
+				Console.WriteLine($"Initializing database at: {dbPath}");
+
+				// Run synchronously to ensure DB is ready before UI loads
+				DatabaseInitializer.InitializeAsync(context).GetAwaiter().GetResult();
+
+				Console.WriteLine("Database initialized successfully");
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"ERROR: Database initialization failed: {ex.Message}");
+				Console.WriteLine($"Stack: {ex.StackTrace}");
+				Console.WriteLine($"Inner: {ex.InnerException?.Message}");
+				// Don't throw - let the app start and show error in UI
+			}
 
 			Console.WriteLine("DEBUG: Returning MauiApp");
 			return app;

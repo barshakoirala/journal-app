@@ -11,10 +11,10 @@ public interface IJournalService
     Task<JournalEntry> UpdateEntryAsync(JournalEntry entry, List<int>? secondaryMoodIds = null, List<int>? tagIds = null);
     Task DeleteEntryAsync(int id);
     Task<bool> EntryExistsForDateAsync(DateTime date);
-    
+
     // Pagination support
     Task<(List<JournalEntry> Entries, int TotalCount)> GetEntriesPaginatedAsync(int pageNumber, int pageSize);
-    
+
     // Search & Filter support
     Task<(List<JournalEntry> Entries, int TotalCount)> SearchEntriesAsync(
         string? searchTerm = null,

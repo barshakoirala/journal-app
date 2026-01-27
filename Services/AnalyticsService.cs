@@ -7,15 +7,26 @@ namespace JournalAppBlazor.Services;
 public class AnalyticsService : IAnalyticsService
 {
     private readonly JournalDbContext _context;
+    private readonly IAuthService _authService;
 
-    public AnalyticsService(JournalDbContext context)
+    public AnalyticsService(JournalDbContext context, IAuthService authService)
     {
         _context = context;
+        _authService = authService;
+    }
+
+    private int GetCurrentUserId()
+    {
+        return _authService.CurrentUserId
+            ?? throw new UnauthorizedAccessException("User is not authenticated.");
     }
 
     public async Task<MoodDistribution> GetMoodDistributionAsync(DateTime? startDate = null, DateTime? endDate = null)
     {
+        var userId = GetCurrentUserId();
+
         var query = _context.JournalEntries
+            .Where(e => e.UserId == userId)
             .Include(e => e.PrimaryMood)
             .AsQueryable();
 
@@ -40,7 +51,10 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<Mood?> GetMostFrequentMoodAsync(DateTime? startDate = null, DateTime? endDate = null)
     {
+        var userId = GetCurrentUserId();
+
         var query = _context.JournalEntries
+            .Where(e => e.UserId == userId)
             .Include(e => e.PrimaryMood)
             .AsQueryable();
 
@@ -63,9 +77,12 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<List<TagUsage>> GetMostUsedTagsAsync(int count = 10, DateTime? startDate = null, DateTime? endDate = null)
     {
+        var userId = GetCurrentUserId();
+
         var query = _context.JournalEntryTags
             .Include(t => t.Tag)
             .Include(t => t.JournalEntry)
+            .Where(t => t.JournalEntry.UserId == userId)
             .AsQueryable();
 
         if (startDate.HasValue)
@@ -74,7 +91,8 @@ public class AnalyticsService : IAnalyticsService
             query = query.Where(t => t.JournalEntry.Date <= endDate.Value.Date);
 
         var totalEntries = await _context.JournalEntries
-            .Where(e => (!startDate.HasValue || e.Date >= startDate.Value.Date) &&
+            .Where(e => e.UserId == userId &&
+                       (!startDate.HasValue || e.Date >= startDate.Value.Date) &&
                        (!endDate.HasValue || e.Date <= endDate.Value.Date))
             .CountAsync();
 
@@ -96,7 +114,11 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<List<TagBreakdown>> GetTagBreakdownAsync(DateTime? startDate = null, DateTime? endDate = null)
     {
-        var query = _context.JournalEntries.AsQueryable();
+        var userId = GetCurrentUserId();
+
+        var query = _context.JournalEntries
+            .Where(e => e.UserId == userId)
+            .AsQueryable();
 
         if (startDate.HasValue)
             query = query.Where(e => e.Date >= startDate.Value.Date);
@@ -108,7 +130,8 @@ public class AnalyticsService : IAnalyticsService
         var tagBreakdown = await _context.JournalEntryTags
             .Include(t => t.Tag)
             .Include(t => t.JournalEntry)
-            .Where(t => (!startDate.HasValue || t.JournalEntry.Date >= startDate.Value.Date) &&
+            .Where(t => t.JournalEntry.UserId == userId &&
+                       (!startDate.HasValue || t.JournalEntry.Date >= startDate.Value.Date) &&
                        (!endDate.HasValue || t.JournalEntry.Date <= endDate.Value.Date))
             .GroupBy(t => new { t.TagId, t.Tag.Name })
             .Select(g => new TagBreakdown
@@ -126,7 +149,11 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<List<WordCountTrend>> GetWordCountTrendsAsync(DateTime? startDate = null, DateTime? endDate = null)
     {
-        var query = _context.JournalEntries.AsQueryable();
+        var userId = GetCurrentUserId();
+
+        var query = _context.JournalEntries
+            .Where(e => e.UserId == userId)
+            .AsQueryable();
 
         if (startDate.HasValue)
             query = query.Where(e => e.Date >= startDate.Value.Date);

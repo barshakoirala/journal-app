@@ -35,8 +35,28 @@ else if (_needsAuthRedirect)
         <p>Redirecting...</p>
     </div>
 }
+else if (IsLoginPage)
+{
+    <!-- Auth pages: No sidebar, full-screen centered layout -->
+    <div class="auth-layout" data-theme="@ThemeService.CurrentTheme">
+        <div class="auth-container">
+            <div class="auth-brand">
+                <div class="auth-logo">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+                        <path d="M8 7h6"/>
+                        <path d="M8 11h8"/>
+                    </svg>
+                </div>
+                <h1 class="auth-app-name">Journal App</h1>
+            </div>
+            @Body
+        </div>
+    </div>
+}
 else
 {
+    <!-- Main app layout with sidebar -->
     <div class="app-layout" data-theme="@ThemeService.CurrentTheme">
         <aside class="sidebar">
             <NavMenu />
@@ -72,6 +92,7 @@ else
                     </button>
                     @if (AuthService.IsAuthenticated)
                     {
+                        <span class="user-greeting">Hi, @AuthService.CurrentUsername</span>
                         <button class="header-btn logout-btn" @onclick="Logout" title="Logout">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -91,7 +112,7 @@ else
 }
 
 @code {
-    private bool IsLoginPage => Navigation.Uri.Contains("/login") || Navigation.Uri.Contains("/setup-password");
+    private bool IsLoginPage => Navigation.Uri.Contains("/login") || Navigation.Uri.Contains("/signup");
     private bool HasInitError { get; set; } = false;
     private string? InitErrorMessage { get; set; }
     private string? InitErrorStack { get; set; }
@@ -111,8 +132,8 @@ else
             var p when p.StartsWith("/journal/edit") => "Edit Entry",
             "/dashboard" => "Dashboard",
             "/export" => "Export",
-            "/login" => "Login",
-            "/setup-password" => "Setup",
+            "/login" => "Sign In",
+            "/signup" => "Sign Up",
             _ => "Journal"
         };
     }
@@ -126,18 +147,13 @@ else
             ThemeService.OnThemeChanged += StateHasChanged;
             Navigation.LocationChanged += OnLocationChanged;
             
-            var isPasswordSet = await AuthService.IsPasswordSetAsync();
-            Console.WriteLine($"MainLayout: Password set = {isPasswordSet}, IsAuthenticated = {AuthService.IsAuthenticated}");
+            var hasUsers = await AuthService.HasAnyUsersAsync();
+            Console.WriteLine($"MainLayout: Has users = {hasUsers}, IsAuthenticated = {AuthService.IsAuthenticated}");
             
-            if (isPasswordSet && !AuthService.IsAuthenticated && !IsLoginPage)
+            if (!AuthService.IsAuthenticated && !IsLoginPage)
             {
                 _needsAuthRedirect = true;
-                _redirectTarget = "/login";
-            }
-            else if (!isPasswordSet && !IsLoginPage)
-            {
-                _needsAuthRedirect = true;
-                _redirectTarget = "/setup-password";
+                _redirectTarget = hasUsers ? "/login" : "/signup";
             }
             
             Console.WriteLine("MainLayout: Initialization complete");

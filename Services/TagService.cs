@@ -16,15 +16,26 @@ public interface ITagService
 public class TagService : ITagService
 {
     private readonly JournalDbContext _context;
+    private readonly IAuthService _authService;
 
-    public TagService(JournalDbContext context)
+    public TagService(JournalDbContext context, IAuthService authService)
     {
         _context = context;
+        _authService = authService;
+    }
+
+    private int? GetCurrentUserId()
+    {
+        return _authService.CurrentUserId;
     }
 
     public async Task<List<Tag>> GetAllTagsAsync()
     {
+        var userId = GetCurrentUserId();
+
+        // Return pre-built tags (UserId is null) + user's custom tags
         return await _context.Tags
+            .Where(t => t.IsPreBuilt || t.UserId == userId)
             .OrderBy(t => t.IsPreBuilt ? 0 : 1)
             .ThenBy(t => t.Name)
             .ToListAsync();
@@ -40,7 +51,9 @@ public class TagService : ITagService
 
     public async Task<Tag> CreateTagAsync(string name)
     {
-        // Check if tag already exists
+        var userId = GetCurrentUserId();
+
+        // Check if tag already exists (either pre-built or user's own)
         var existingTag = await GetTagByNameAsync(name);
         if (existingTag != null)
         {
@@ -50,7 +63,8 @@ public class TagService : ITagService
         var tag = new Tag
         {
             Name = name,
-            IsPreBuilt = false
+            IsPreBuilt = false,
+            UserId = userId
         };
 
         _context.Tags.Add(tag);
@@ -60,12 +74,21 @@ public class TagService : ITagService
 
     public async Task<Tag?> GetTagByIdAsync(int id)
     {
-        return await _context.Tags.FindAsync(id);
+        var userId = GetCurrentUserId();
+
+        // Allow access to pre-built tags or user's own tags
+        return await _context.Tags
+            .FirstOrDefaultAsync(t => t.Id == id && (t.IsPreBuilt || t.UserId == userId));
     }
 
     public async Task<Tag?> GetTagByNameAsync(string name)
     {
+        var userId = GetCurrentUserId();
+
+        // Check pre-built tags first, then user's custom tags
         return await _context.Tags
-            .FirstOrDefaultAsync(t => t.Name.ToLower() == name.ToLower());
+            .FirstOrDefaultAsync(t =>
+                t.Name.ToLower() == name.ToLower() &&
+                (t.IsPreBuilt || t.UserId == userId));
     }
 }

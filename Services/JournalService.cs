@@ -7,14 +7,23 @@ namespace JournalAppBlazor.Services;
 public class JournalService : IJournalService
 {
     private readonly JournalDbContext _context;
+    private readonly IAuthService _authService;
 
-    public JournalService(JournalDbContext context)
+    public JournalService(JournalDbContext context, IAuthService authService)
     {
         _context = context;
+        _authService = authService;
+    }
+
+    private int GetCurrentUserId()
+    {
+        return _authService.CurrentUserId
+            ?? throw new UnauthorizedAccessException("User is not authenticated.");
     }
 
     public async Task<JournalEntry?> GetEntryByDateAsync(DateTime date)
     {
+        var userId = GetCurrentUserId();
         var dateOnly = date.Date;
         return await _context.JournalEntries
             .Include(e => e.PrimaryMood)
@@ -22,23 +31,26 @@ public class JournalService : IJournalService
                 .ThenInclude(sm => sm.Mood)
             .Include(e => e.Tags)
                 .ThenInclude(t => t.Tag)
-            .FirstOrDefaultAsync(e => e.Date.Date == dateOnly);
+            .FirstOrDefaultAsync(e => e.UserId == userId && e.Date.Date == dateOnly);
     }
 
     public async Task<JournalEntry?> GetEntryByIdAsync(int id)
     {
+        var userId = GetCurrentUserId();
         return await _context.JournalEntries
             .Include(e => e.PrimaryMood)
             .Include(e => e.SecondaryMoods)
                 .ThenInclude(sm => sm.Mood)
             .Include(e => e.Tags)
                 .ThenInclude(t => t.Tag)
-            .FirstOrDefaultAsync(e => e.Id == id);
+            .FirstOrDefaultAsync(e => e.UserId == userId && e.Id == id);
     }
 
     public async Task<List<JournalEntry>> GetAllEntriesAsync()
     {
+        var userId = GetCurrentUserId();
         return await _context.JournalEntries
+            .Where(e => e.UserId == userId)
             .Include(e => e.PrimaryMood)
             .Include(e => e.SecondaryMoods)
                 .ThenInclude(sm => sm.Mood)
@@ -50,6 +62,8 @@ public class JournalService : IJournalService
 
     public async Task<JournalEntry> CreateEntryAsync(JournalEntry entry, List<int>? secondaryMoodIds = null, List<int>? tagIds = null)
     {
+        var userId = GetCurrentUserId();
+
         // Ensure date is set to today if not provided
         if (entry.Date == default)
         {
@@ -66,17 +80,20 @@ public class JournalService : IJournalService
             throw new InvalidOperationException("Primary mood is required.");
         }
 
-        // Check if entry already exists for this date
+        // Check if entry already exists for this date FOR THIS USER
         if (await EntryExistsForDateAsync(entry.Date))
         {
             throw new InvalidOperationException($"An entry already exists for {entry.Date:yyyy-MM-dd}. Only one entry per day is allowed.");
         }
 
+        // Set user ID
+        entry.UserId = userId;
         entry.CreatedAt = DateTime.Now;
         entry.UpdatedAt = DateTime.Now;
 
         // Clear navigation properties to avoid tracking issues - EF will set them based on foreign keys
         entry.PrimaryMood = null!;
+        entry.User = null!;
         entry.SecondaryMoods.Clear();
         entry.Tags.Clear();
 
@@ -133,10 +150,12 @@ public class JournalService : IJournalService
 
     public async Task<JournalEntry> UpdateEntryAsync(JournalEntry entry, List<int>? secondaryMoodIds = null, List<int>? tagIds = null)
     {
+        var userId = GetCurrentUserId();
+
         var existingEntry = await _context.JournalEntries
             .Include(e => e.SecondaryMoods)
             .Include(e => e.Tags)
-            .FirstOrDefaultAsync(e => e.Id == entry.Id);
+            .FirstOrDefaultAsync(e => e.UserId == userId && e.Id == entry.Id);
 
         if (existingEntry == null)
         {
@@ -184,7 +203,10 @@ public class JournalService : IJournalService
 
     public async Task DeleteEntryAsync(int id)
     {
-        var entry = await _context.JournalEntries.FindAsync(id);
+        var userId = GetCurrentUserId();
+        var entry = await _context.JournalEntries
+            .FirstOrDefaultAsync(e => e.UserId == userId && e.Id == id);
+
         if (entry != null)
         {
             _context.JournalEntries.Remove(entry);
@@ -194,13 +216,17 @@ public class JournalService : IJournalService
 
     public async Task<bool> EntryExistsForDateAsync(DateTime date)
     {
+        var userId = GetCurrentUserId();
         var dateOnly = date.Date;
-        return await _context.JournalEntries.AnyAsync(e => e.Date.Date == dateOnly);
+        return await _context.JournalEntries.AnyAsync(e => e.UserId == userId && e.Date.Date == dateOnly);
     }
 
     public async Task<(List<JournalEntry> Entries, int TotalCount)> GetEntriesPaginatedAsync(int pageNumber, int pageSize)
     {
+        var userId = GetCurrentUserId();
+
         var query = _context.JournalEntries
+            .Where(e => e.UserId == userId)
             .Include(e => e.PrimaryMood)
             .Include(e => e.SecondaryMoods)
                 .ThenInclude(sm => sm.Mood)
@@ -209,7 +235,7 @@ public class JournalService : IJournalService
             .OrderByDescending(e => e.Date);
 
         var totalCount = await query.CountAsync();
-        
+
         var entries = await query
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
@@ -227,7 +253,10 @@ public class JournalService : IJournalService
         int pageNumber = 1,
         int pageSize = 10)
     {
+        var userId = GetCurrentUserId();
+
         var query = _context.JournalEntries
+            .Where(e => e.UserId == userId)
             .Include(e => e.PrimaryMood)
             .Include(e => e.SecondaryMoods)
                 .ThenInclude(sm => sm.Mood)
@@ -239,8 +268,8 @@ public class JournalService : IJournalService
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
             var searchLower = searchTerm.ToLower();
-            query = query.Where(e => 
-                e.Title.ToLower().Contains(searchLower) || 
+            query = query.Where(e =>
+                e.Title.ToLower().Contains(searchLower) ||
                 e.Content.ToLower().Contains(searchLower));
         }
 
@@ -257,7 +286,7 @@ public class JournalService : IJournalService
         // Filter by moods (primary or secondary)
         if (moodIds != null && moodIds.Any())
         {
-            query = query.Where(e => 
+            query = query.Where(e =>
                 moodIds.Contains(e.PrimaryMoodId) ||
                 e.SecondaryMoods.Any(sm => moodIds.Contains(sm.MoodId)));
         }
@@ -265,7 +294,7 @@ public class JournalService : IJournalService
         // Filter by tags
         if (tagIds != null && tagIds.Any())
         {
-            query = query.Where(e => 
+            query = query.Where(e =>
                 e.Tags.Any(t => tagIds.Contains(t.TagId)));
         }
 

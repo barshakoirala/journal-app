@@ -8,17 +8,29 @@ namespace JournalAppBlazor.Services;
 public class ExportService : IExportService
 {
     private readonly IDbContextFactory<JournalDbContext> _contextFactory;
+    private readonly IAuthService _authService;
 
-    public ExportService(IDbContextFactory<JournalDbContext> contextFactory)
+    public ExportService(IDbContextFactory<JournalDbContext> contextFactory, IAuthService authService)
     {
         _contextFactory = contextFactory;
+        _authService = authService;
+    }
+
+    private int GetCurrentUserId()
+    {
+        return _authService.CurrentUserId
+            ?? throw new UnauthorizedAccessException("User is not authenticated.");
     }
 
     public async Task<string> ExportToHtmlAsync(DateTime startDate, DateTime endDate)
     {
+        var userId = GetCurrentUserId();
+        var username = _authService.CurrentUsername ?? "User";
+
         await using var context = await _contextFactory.CreateDbContextAsync();
-        
+
         var entries = await context.JournalEntries
+            .Where(e => e.UserId == userId)
             .Include(e => e.PrimaryMood)
             .Include(e => e.SecondaryMoods)
                 .ThenInclude(sm => sm.Mood)
@@ -29,7 +41,7 @@ public class ExportService : IExportService
             .ToListAsync();
 
         var html = new StringBuilder();
-        
+
         // HTML header with print-friendly CSS
         html.AppendLine(@"<!DOCTYPE html>
 <html lang=""en"">
@@ -39,7 +51,7 @@ public class ExportService : IExportService
     <title>Journal Export</title>
     <style>
         * { box-sizing: border-box; }
-        body { 
+        body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6;
             color: #333;
@@ -155,9 +167,9 @@ public class ExportService : IExportService
 <body>");
 
         // Header
-        html.AppendLine(@"
+        html.AppendLine($@"
     <div class=""header"">
-        <h1>My Journal</h1>
+        <h1>{EscapeHtml(username)}'s Journal</h1>
         <p>Personal Journal Export</p>
     </div>");
 
@@ -265,9 +277,9 @@ public class ExportService : IExportService
     {
         var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         var filePath = Path.Combine(documentsPath, fileName);
-        
+
         await File.WriteAllTextAsync(filePath, content);
-        
+
         return filePath;
     }
 }

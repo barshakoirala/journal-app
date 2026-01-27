@@ -1,85 +1,146 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
+using JournalAppBlazor.Data;
+using JournalAppBlazor.Models;
 
 namespace JournalAppBlazor.Services;
 
 public interface IAuthService
 {
-    Task<bool> IsPasswordSetAsync();
-    Task<bool> SetPasswordAsync(string password);
-    Task<bool> VerifyPasswordAsync(string password);
-    Task<bool> ChangePasswordAsync(string oldPassword, string newPassword);
-    bool IsAuthenticated { get; }
-    Task LoginAsync(string password);
+    Task<bool> HasAnyUsersAsync();
+    Task<(bool Success, string Error)> RegisterAsync(string username, string password);
+    Task<(bool Success, string Error)> LoginAsync(string username, string password);
     Task LogoutAsync();
+    bool IsAuthenticated { get; }
+    string? CurrentUsername { get; }
+    int? CurrentUserId { get; }
 }
 
 public class AuthService : IAuthService
 {
-    private const string PasswordHashKey = "journal_app_password_hash";
+    private readonly IDbContextFactory<JournalDbContext> _contextFactory;
     private const string IsAuthenticatedKey = "journal_app_authenticated";
-    
+    private const string CurrentUserIdKey = "journal_app_user_id";
+    private const string CurrentUsernameKey = "journal_app_username";
+
     public bool IsAuthenticated { get; private set; }
+    public string? CurrentUsername { get; private set; }
+    public int? CurrentUserId { get; private set; }
 
-    public AuthService()
+    public AuthService(IDbContextFactory<JournalDbContext> contextFactory)
     {
-        // Check if already authenticated in this session
+        _contextFactory = contextFactory;
+        
+        // Restore session state
         IsAuthenticated = Preferences.Get(IsAuthenticatedKey, false);
+        CurrentUserId = Preferences.Get(CurrentUserIdKey, 0);
+        CurrentUsername = Preferences.Get(CurrentUsernameKey, string.Empty);
+        
+        if (CurrentUserId == 0)
+        {
+            CurrentUserId = null;
+            CurrentUsername = null;
+            IsAuthenticated = false;
+        }
     }
 
-    public async Task<bool> IsPasswordSetAsync()
+    public async Task<bool> HasAnyUsersAsync()
     {
-        var hash = Preferences.Get(PasswordHashKey, string.Empty);
-        return !string.IsNullOrEmpty(hash);
+        using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.Users.AnyAsync();
     }
 
-    public async Task<bool> SetPasswordAsync(string password)
+    public async Task<(bool Success, string Error)> RegisterAsync(string username, string password)
     {
+        if (string.IsNullOrWhiteSpace(username))
+            return (false, "Username is required.");
+
+        if (username.Length < 3)
+            return (false, "Username must be at least 3 characters.");
+
         if (string.IsNullOrWhiteSpace(password))
-            return false;
+            return (false, "Password is required.");
 
-        var hash = HashPassword(password);
-        Preferences.Set(PasswordHashKey, hash);
-        IsAuthenticated = true;
-        Preferences.Set(IsAuthenticatedKey, true);
-        return true;
-    }
+        if (password.Length < 4)
+            return (false, "Password must be at least 4 characters.");
 
-    public async Task<bool> VerifyPasswordAsync(string password)
-    {
-        var storedHash = Preferences.Get(PasswordHashKey, string.Empty);
-        if (string.IsNullOrEmpty(storedHash))
-            return false;
+        using var context = await _contextFactory.CreateDbContextAsync();
 
-        return VerifyPasswordHash(password, storedHash);
-    }
+        // Check if username already exists
+        var existingUser = await context.Users
+            .FirstOrDefaultAsync(u => u.Username.ToLower() == username.ToLower());
 
-    public async Task<bool> ChangePasswordAsync(string oldPassword, string newPassword)
-    {
-        if (!await VerifyPasswordAsync(oldPassword))
-            return false;
+        if (existingUser != null)
+            return (false, "Username already taken.");
 
-        return await SetPasswordAsync(newPassword);
-    }
-
-    public async Task LoginAsync(string password)
-    {
-        if (await VerifyPasswordAsync(password))
+        // Create new user
+        var user = new User
         {
-            IsAuthenticated = true;
-            Preferences.Set(IsAuthenticatedKey, true);
-        }
-        else
-        {
-            throw new UnauthorizedAccessException("Invalid password");
-        }
+            Username = username,
+            PasswordHash = HashPassword(password),
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        // Auto-login after registration
+        SetAuthenticatedState(user);
+
+        return (true, string.Empty);
     }
 
-    public async Task LogoutAsync()
+    public async Task<(bool Success, string Error)> LoginAsync(string username, string password)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            return (false, "Username is required.");
+
+        if (string.IsNullOrWhiteSpace(password))
+            return (false, "Password is required.");
+
+        using var context = await _contextFactory.CreateDbContextAsync();
+
+        var user = await context.Users
+            .FirstOrDefaultAsync(u => u.Username.ToLower() == username.ToLower());
+
+        if (user == null)
+            return (false, "Invalid username or password.");
+
+        if (!VerifyPassword(password, user.PasswordHash))
+            return (false, "Invalid username or password.");
+
+        // Update last login
+        user.LastLoginAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        SetAuthenticatedState(user);
+
+        return (true, string.Empty);
+    }
+
+    public Task LogoutAsync()
     {
         IsAuthenticated = false;
+        CurrentUserId = null;
+        CurrentUsername = null;
+
         Preferences.Set(IsAuthenticatedKey, false);
-        await Task.CompletedTask;
+        Preferences.Remove(CurrentUserIdKey);
+        Preferences.Remove(CurrentUsernameKey);
+
+        return Task.CompletedTask;
+    }
+
+    private void SetAuthenticatedState(User user)
+    {
+        IsAuthenticated = true;
+        CurrentUserId = user.Id;
+        CurrentUsername = user.Username;
+
+        Preferences.Set(IsAuthenticatedKey, true);
+        Preferences.Set(CurrentUserIdKey, user.Id);
+        Preferences.Set(CurrentUsernameKey, user.Username);
     }
 
     private string HashPassword(string password)
@@ -91,7 +152,7 @@ public class AuthService : IAuthService
             rng.GetBytes(salt);
         }
 
-        // Use SHA256 for hashing (simpler than PBKDF2 for this use case)
+        // Use SHA256 for hashing
         using (var sha256 = SHA256.Create())
         {
             var saltedPassword = Encoding.UTF8.GetBytes(password + Convert.ToBase64String(salt));
@@ -100,18 +161,18 @@ public class AuthService : IAuthService
         }
     }
 
-    private bool VerifyPasswordHash(string password, string storedHash)
+    private bool VerifyPassword(string password, string storedHash)
     {
         var parts = storedHash.Split(':');
         if (parts.Length != 2)
             return false;
 
-        var salt = Convert.FromBase64String(parts[0]);
+        var salt = parts[0];
         var hash = parts[1];
 
         using (var sha256 = SHA256.Create())
         {
-            var saltedPassword = Encoding.UTF8.GetBytes(password + Convert.ToBase64String(salt));
+            var saltedPassword = Encoding.UTF8.GetBytes(password + salt);
             var computedHash = sha256.ComputeHash(saltedPassword);
             var computedHashString = Convert.ToBase64String(computedHash);
             return hash == computedHashString;
