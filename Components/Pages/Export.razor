@@ -1,0 +1,226 @@
+@page "/export"
+@inject IExportService ExportService
+@inject IJournalService JournalService
+
+<h3>Export Journal</h3>
+<p class="text-muted">Export your journal entries to HTML format (can be saved as PDF from browser)</p>
+
+<div class="export-container">
+    <div class="card">
+        <div class="card-header">
+            <h5>Select Date Range</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" class="form-control" @bind="StartDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">End Date</label>
+                    <input type="date" class="form-control" @bind="EndDate" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-12">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="SetLastWeek">Last 7 Days</button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="SetLastMonth">Last 30 Days</button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="SetLastThreeMonths">Last 3 Months</button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="SetAllTime">All Time</button>
+                    </div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(ValidationMessage))
+            {
+                <div class="alert alert-warning">@ValidationMessage</div>
+            }
+
+            @if (!string.IsNullOrEmpty(SuccessMessage))
+            {
+                <div class="alert alert-success">
+                    @SuccessMessage
+                    @if (!string.IsNullOrEmpty(SavedFilePath))
+                    {
+                        <br /><small class="text-muted">Saved to: @SavedFilePath</small>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert-danger">@ErrorMessage</div>
+            }
+
+            <div class="d-flex gap-2 mt-4">
+                <button class="btn btn-primary" @onclick="GenerateAndExport" disabled="@IsExporting">
+                    @if (IsExporting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        <span>Generating...</span>
+                    }
+                    else
+                    {
+                        <span>Export to HTML</span>
+                    }
+                </button>
+
+                <button class="btn btn-outline-secondary" @onclick="PreviewEntryCount" disabled="@IsExporting">
+                    Preview
+                </button>
+            </div>
+
+            @if (PreviewCount.HasValue)
+            {
+                <div class="mt-3 p-3 bg-light rounded">
+                    <strong>Preview:</strong> @PreviewCount entries found between @StartDate.ToString("MMM dd, yyyy") and @EndDate.ToString("MMM dd, yyyy")
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .export-container {
+        max-width: 700px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .card {
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .card-header {
+        background: linear-gradient(135deg, var(--bg-secondary, #f8f9fa), var(--bg-primary, #ffffff));
+        border-radius: 12px 12px 0 0;
+        padding: 15px 20px;
+    }
+    
+    .card-header h5 {
+        margin: 0;
+        color: var(--text-primary, #333);
+    }
+    
+    .card-body {
+        padding: 25px;
+    }
+    
+    .btn-group .btn {
+        font-size: 0.85rem;
+    }
+</style>
+
+@code {
+    private DateTime StartDate { get; set; } = DateTime.Today.AddDays(-30);
+    private DateTime EndDate { get; set; } = DateTime.Today;
+    private bool IsExporting { get; set; } = false;
+    private string? ValidationMessage { get; set; }
+    private string? SuccessMessage { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? SavedFilePath { get; set; }
+    private int? PreviewCount { get; set; }
+
+    private void SetLastWeek()
+    {
+        StartDate = DateTime.Today.AddDays(-7);
+        EndDate = DateTime.Today;
+        ClearMessages();
+    }
+
+    private void SetLastMonth()
+    {
+        StartDate = DateTime.Today.AddDays(-30);
+        EndDate = DateTime.Today;
+        ClearMessages();
+    }
+
+    private void SetLastThreeMonths()
+    {
+        StartDate = DateTime.Today.AddMonths(-3);
+        EndDate = DateTime.Today;
+        ClearMessages();
+    }
+
+    private void SetAllTime()
+    {
+        StartDate = new DateTime(2020, 1, 1); // Far back enough
+        EndDate = DateTime.Today;
+        ClearMessages();
+    }
+
+    private void ClearMessages()
+    {
+        ValidationMessage = null;
+        SuccessMessage = null;
+        ErrorMessage = null;
+        PreviewCount = null;
+    }
+
+    private async Task PreviewEntryCount()
+    {
+        ClearMessages();
+        
+        if (StartDate > EndDate)
+        {
+            ValidationMessage = "Start date must be before or equal to end date.";
+            return;
+        }
+
+        try
+        {
+            var (entries, count) = await JournalService.SearchEntriesAsync(
+                startDate: StartDate,
+                endDate: EndDate,
+                pageNumber: 1,
+                pageSize: 1000);
+            
+            PreviewCount = count;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error fetching preview: {ex.Message}";
+        }
+    }
+
+    private async Task GenerateAndExport()
+    {
+        ClearMessages();
+
+        if (StartDate > EndDate)
+        {
+            ValidationMessage = "Start date must be before or equal to end date.";
+            return;
+        }
+
+        IsExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            // Generate HTML
+            var htmlContent = await ExportService.ExportToHtmlAsync(StartDate, EndDate);
+            
+            // Generate filename
+            var fileName = $"Journal_Export_{StartDate:yyyyMMdd}_to_{EndDate:yyyyMMdd}.html";
+            
+            // Save to file
+            SavedFilePath = await ExportService.SaveExportToFileAsync(htmlContent, fileName);
+            
+            SuccessMessage = $"Export saved successfully! Open the file in a browser and use Print > Save as PDF.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error generating export: {ex.Message}";
+            Console.WriteLine($"Export Error: {ex}");
+        }
+        finally
+        {
+            IsExporting = false;
+            StateHasChanged();
+        }
+    }
+}

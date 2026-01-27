@@ -1,0 +1,211 @@
+@page "/journal/create"
+@page "/journal/edit/{Id:int}"
+@inject IJournalService JournalService
+@inject IMoodService MoodService
+@inject ITagService TagService
+@inject NavigationManager Navigation
+
+<PageTitle>Journal Entry</PageTitle>
+
+<div class="container mt-4">
+    <h2>@((Entry?.Id ?? 0) > 0 ? "Edit Journal Entry" : "Create Journal Entry")</h2>
+    
+    <EditForm Model="@Entry" OnValidSubmit="@HandleSubmit">
+        <DataAnnotationsValidator />
+        
+        <div class="mb-3">
+            <label class="form-label">Date</label>
+            <InputDate class="form-control" @bind-Value="@Entry.Date" />
+            <ValidationMessage For="@(() => Entry.Date)" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Title</label>
+            <InputText class="form-control" @bind-Value="@Entry.Title" />
+            <ValidationMessage For="@(() => Entry.Title)" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Content</label>
+            <InputTextArea class="form-control" rows="10" @bind-Value="@Entry.Content" />
+            <ValidationMessage For="@(() => Entry.Content)" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Primary Mood (Required)</label>
+            <MoodSelector 
+                Moods="@AllMoods" 
+                SelectedMoodId="@Entry.PrimaryMoodId"
+                OnMoodSelected="@((int id) => Entry.PrimaryMoodId = id)" />
+            <ValidationMessage For="@(() => Entry.PrimaryMoodId)" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Secondary Moods (Optional, up to 2)</label>
+            <MoodSelector 
+                Moods="@AllMoods" 
+                SelectedMoodIds="@SelectedSecondaryMoodIds"
+                OnMoodsSelected="@((List<int> ids) => SelectedSecondaryMoodIds = ids)"
+                IsMultiSelect="true"
+                MaxSelections="2" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Tags</label>
+            <TagSelector 
+                Tags="@AllTags" 
+                SelectedTagIds="@SelectedTagIds"
+                OnTagsSelected="@((List<int> ids) => SelectedTagIds = ids)"
+                OnCreateTag="@HandleCreateTag" />
+        </div>
+
+        <div class="mb-3">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <button type="button" class="btn btn-secondary ms-2" @onclick="@Cancel">Cancel</button>
+            @if (Entry?.Id > 0)
+            {
+                <button type="button" class="btn btn-danger ms-2" @onclick="@HandleDelete">Delete</button>
+            }
+        </div>
+    </EditForm>
+
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="alert alert-danger mt-3">
+            <strong>Error:</strong> @ErrorMessage
+            @if (!string.IsNullOrEmpty(ErrorDetails))
+            {
+                <details class="mt-2">
+                    <summary>Details</summary>
+                    <pre class="mt-2" style="white-space: pre-wrap; font-size: 0.9em;">@ErrorDetails</pre>
+                </details>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private JournalEntry Entry { get; set; } = new() { Date = DateTime.Today };
+    private List<Mood> AllMoods { get; set; } = new();
+    private List<Tag> AllTags { get; set; } = new();
+    private List<int> SelectedSecondaryMoodIds { get; set; } = new();
+    private List<int> SelectedTagIds { get; set; } = new();
+    private string ErrorMessage { get; set; } = string.Empty;
+    private string ErrorDetails { get; set; } = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AllMoods = await MoodService.GetAllMoodsAsync();
+        AllTags = await TagService.GetAllTagsAsync();
+
+        if (Id > 0)
+        {
+            // Edit mode
+            var existingEntry = await JournalService.GetEntryByIdAsync(Id);
+            if (existingEntry != null)
+            {
+                Entry = existingEntry;
+                SelectedSecondaryMoodIds = existingEntry.SecondaryMoods.Select(sm => sm.MoodId).ToList();
+                SelectedTagIds = existingEntry.Tags.Select(t => t.TagId).ToList();
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+            }
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        try
+        {
+            ErrorMessage = string.Empty;
+            ErrorDetails = string.Empty;
+
+            // Validate PrimaryMoodId before submitting
+            if (Entry.PrimaryMoodId <= 0)
+            {
+                ErrorMessage = "Please select a primary mood.";
+                return;
+            }
+
+            if (Entry.Id > 0)
+            {
+                // Update
+                await JournalService.UpdateEntryAsync(Entry, SelectedSecondaryMoodIds, SelectedTagIds);
+            }
+            else
+            {
+                // Create
+                await JournalService.CreateEntryAsync(Entry, SelectedSecondaryMoodIds, SelectedTagIds);
+            }
+
+            Navigation.NavigateTo("/journal/list");
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            
+            // Build detailed error message
+            var details = new System.Text.StringBuilder();
+            details.AppendLine($"Exception Type: {ex.GetType().Name}");
+            details.AppendLine($"Message: {ex.Message}");
+            
+            if (ex.InnerException != null)
+            {
+                details.AppendLine();
+                details.AppendLine($"Inner Exception Type: {ex.InnerException.GetType().Name}");
+                details.AppendLine($"Inner Message: {ex.InnerException.Message}");
+                
+                if (ex.InnerException.InnerException != null)
+                {
+                    details.AppendLine();
+                    details.AppendLine($"Inner-Inner Exception: {ex.InnerException.InnerException.GetType().Name}");
+                    details.AppendLine($"Inner-Inner Message: {ex.InnerException.InnerException.Message}");
+                }
+            }
+            
+            if (!string.IsNullOrEmpty(ex.StackTrace))
+            {
+                details.AppendLine();
+                details.AppendLine("Stack Trace:");
+                details.AppendLine(ex.StackTrace);
+            }
+            
+            ErrorDetails = details.ToString();
+        }
+    }
+
+    private async Task HandleDelete()
+    {
+        if ((Entry?.Id ?? 0) > 0)
+        {
+            await JournalService.DeleteEntryAsync(Entry!.Id);
+            Navigation.NavigateTo("/journal/list");
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/journal/list");
+    }
+
+    private async Task HandleCreateTag(string tagName)
+    {
+        try
+        {
+            var newTag = await TagService.CreateTagAsync(tagName);
+            AllTags = await TagService.GetAllTagsAsync();
+            if (!SelectedTagIds.Contains(newTag.Id))
+            {
+                SelectedTagIds.Add(newTag.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error creating tag: {ex.Message}";
+        }
+    }
+}

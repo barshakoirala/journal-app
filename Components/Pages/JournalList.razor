@@ -1,0 +1,325 @@
+@page "/journal/list"
+@inject IJournalService JournalService
+@inject IMoodService MoodService
+@inject ITagService TagService
+@inject NavigationManager Navigation
+
+<PageTitle>Journal Entries</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>My Journal Entries</h2>
+        <a href="/journal/create" class="btn btn-primary">New Entry</a>
+    </div>
+
+    <!-- Search & Filter Section -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Search & Filter</h5>
+            
+            <!-- Search Bar -->
+            <div class="mb-3">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-control" placeholder="Search by title or content..." 
+                       value="@SearchTerm" @oninput="@((ChangeEventArgs e) => { SearchTerm = e.Value?.ToString() ?? string.Empty; OnSearchChanged(); })" />
+            </div>
+
+            <div class="row">
+                <!-- Date Range Filter -->
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">From Date</label>
+                    <input type="date" class="form-control" value="@(StartDate?.ToString("yyyy-MM-dd") ?? "")" 
+                           @onchange="@((ChangeEventArgs e) => { StartDate = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!); OnFilterChanged(); })" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">To Date</label>
+                    <input type="date" class="form-control" value="@(EndDate?.ToString("yyyy-MM-dd") ?? "")" 
+                           @onchange="@((ChangeEventArgs e) => { EndDate = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!); OnFilterChanged(); })" />
+                </div>
+
+                <!-- Mood Filter -->
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Filter by Mood</label>
+                    <select class="form-select" value="@SelectedMoodId.ToString()" 
+                            @onchange="@((ChangeEventArgs e) => { SelectedMoodId = int.Parse(e.Value?.ToString() ?? "0"); OnFilterChanged(); })">
+                        <option value="0">All Moods</option>
+                        @foreach (var mood in AllMoods)
+                        {
+                            <option value="@mood.Id">@mood.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <!-- Tag Filter -->
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Filter by Tag</label>
+                    <select class="form-select" value="@SelectedTagId.ToString()" 
+                            @onchange="@((ChangeEventArgs e) => { SelectedTagId = int.Parse(e.Value?.ToString() ?? "0"); OnFilterChanged(); })">
+                        <option value="0">All Tags</option>
+                        @foreach (var tag in AllTags)
+                        {
+                            <option value="@tag.Id">@tag.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <!-- Active Filters & Clear -->
+            @if (HasActiveFilters())
+            {
+                <div class="mt-2">
+                    <small class="text-muted">Active filters: </small>
+                    @if (!string.IsNullOrWhiteSpace(SearchTerm))
+                    {
+                        <span class="badge bg-secondary">Search: "@SearchTerm"</span>
+                    }
+                    @if (StartDate.HasValue)
+                    {
+                        <span class="badge bg-info">From: @StartDate.Value.ToString("MMM dd, yyyy")</span>
+                    }
+                    @if (EndDate.HasValue)
+                    {
+                        <span class="badge bg-info">To: @EndDate.Value.ToString("MMM dd, yyyy")</span>
+                    }
+                    @if (SelectedMoodId > 0)
+                    {
+                        <span class="badge bg-primary">Mood: @AllMoods.FirstOrDefault(m => m.Id == SelectedMoodId)?.Name</span>
+                    }
+                    @if (SelectedTagId > 0)
+                    {
+                        <span class="badge bg-success">Tag: @AllTags.FirstOrDefault(t => t.Id == SelectedTagId)?.Name</span>
+                    }
+                    <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="ClearFilters">Clear All</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (Loading)
+    {
+        <p>Loading...</p>
+    }
+    else if (ErrorMessage != null)
+    {
+        <div class="alert alert-danger">
+            <strong>Error:</strong> @ErrorMessage
+            <br />
+            <small>@ErrorDetails</small>
+            <br />
+            <button class="btn btn-sm btn-secondary mt-2" @onclick="RetryLoad">Retry</button>
+        </div>
+    }
+    else if (!Entries.Any())
+    {
+        <div class="alert alert-info">
+            <p>No journal entries found. @(HasActiveFilters() ? "Try adjusting your filters." : "Create your first entry!")</p>
+            @if (HasActiveFilters())
+            {
+                <button class="btn btn-sm btn-outline-primary" @onclick="ClearFilters">Clear Filters</button>
+            }
+            else
+            {
+                <a href="/journal/create" class="btn btn-sm btn-primary">Create Entry</a>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- Entries List -->
+        <div class="list-group mb-4">
+            @foreach (var entry in Entries)
+            {
+                <div class="list-group-item">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1">
+                            <a href="/journal/edit/@entry.Id" class="text-decoration-none">@entry.Title</a>
+                        </h5>
+                        <small>@entry.Date.ToString("MMM dd, yyyy")</small>
+                    </div>
+                    <p class="mb-1">@(entry.Content.Length > 200 ? entry.Content.Substring(0, 200) + "..." : entry.Content)</p>
+                    <div class="mt-2">
+                        <span class="badge bg-primary">@entry.PrimaryMood.Name</span>
+                        @foreach (var secondaryMood in entry.SecondaryMoods.Take(2))
+                        {
+                            <span class="badge bg-secondary">@secondaryMood.Mood.Name</span>
+                        }
+                        @foreach (var tag in entry.Tags)
+                        {
+                            <span class="badge bg-info">@tag.Tag.Name</span>
+                        }
+                    </div>
+                    <small class="text-muted">
+                        Created: @entry.CreatedAt.ToString("MMM dd, yyyy HH:mm") | 
+                        Updated: @entry.UpdatedAt.ToString("MMM dd, yyyy HH:mm")
+                    </small>
+                </div>
+            }
+        </div>
+
+        <!-- Pagination Controls -->
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <label class="form-label me-2">Entries per page:</label>
+                <select class="form-select d-inline-block" style="width: auto;" value="@PageSize.ToString()" @onchange="OnPageSizeChanged">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            
+            <div>
+                <small class="text-muted">
+                    Showing @((CurrentPage - 1) * PageSize + 1) - @(Math.Min(CurrentPage * PageSize, TotalCount)) of @TotalCount entries
+                </small>
+            </div>
+
+            <nav>
+                <ul class="pagination mb-0">
+                    <li class="page-item @(CurrentPage == 1 ? "disabled" : "")">
+                        <a class="page-link" href="#" @onclick="() => ChangePage(CurrentPage - 1)" @onclick:preventDefault>Previous</a>
+                    </li>
+                    @for (int i = Math.Max(1, CurrentPage - 2); i <= Math.Min(TotalPages, CurrentPage + 2); i++)
+                    {
+                        <li class="page-item @(i == CurrentPage ? "active" : "")">
+                            <a class="page-link" href="#" @onclick="() => ChangePage(i)" @onclick:preventDefault>@i</a>
+                        </li>
+                    }
+                    <li class="page-item @(CurrentPage == TotalPages ? "disabled" : "")">
+                        <a class="page-link" href="#" @onclick="() => ChangePage(CurrentPage + 1)" @onclick:preventDefault>Next</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    }
+</div>
+
+@code {
+    private List<JournalEntry> Entries { get; set; } = new();
+    private List<Mood> AllMoods { get; set; } = new();
+    private List<Tag> AllTags { get; set; } = new();
+    
+    // Pagination
+    private int CurrentPage { get; set; } = 1;
+    private int PageSize { get; set; } = 10;
+    private int TotalCount { get; set; } = 0;
+    private int TotalPages => (int)Math.Ceiling(TotalCount / (double)PageSize);
+    
+    // Search & Filter
+    private string SearchTerm { get; set; } = string.Empty;
+    private DateTime? StartDate { get; set; }
+    private DateTime? EndDate { get; set; }
+    private int SelectedMoodId { get; set; } = 0;
+    private int SelectedTagId { get; set; } = 0;
+    
+    private bool Loading { get; set; } = true;
+    private string? ErrorMessage { get; set; }
+    private string? ErrorDetails { get; set; }
+    
+    private System.Threading.Timer? _searchTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AllMoods = await MoodService.GetAllMoodsAsync();
+        AllTags = await TagService.GetAllTagsAsync();
+        await LoadEntries();
+    }
+
+
+    private bool HasActiveFilters()
+    {
+        return !string.IsNullOrWhiteSpace(SearchTerm) || 
+               StartDate.HasValue || 
+               EndDate.HasValue || 
+               SelectedMoodId > 0 || 
+               SelectedTagId > 0;
+    }
+
+    private void ClearFilters()
+    {
+        SearchTerm = string.Empty;
+        StartDate = null;
+        EndDate = null;
+        SelectedMoodId = 0;
+        SelectedTagId = 0;
+        CurrentPage = 1;
+        _ = LoadEntries();
+    }
+
+    private void OnSearchChanged()
+    {
+        // Debounce search - wait 500ms after user stops typing
+        _searchTimer?.Dispose();
+        _searchTimer = new System.Threading.Timer(async _ =>
+        {
+            CurrentPage = 1;
+            await InvokeAsync(async () =>
+            {
+                await LoadEntries();
+                StateHasChanged();
+            });
+        }, null, 500, Timeout.Infinite);
+    }
+
+    private async Task OnFilterChanged()
+    {
+        CurrentPage = 1;
+        await LoadEntries();
+    }
+
+    private async Task OnPageSizeChanged(ChangeEventArgs e)
+    {
+        PageSize = int.Parse(e.Value?.ToString() ?? "10");
+        CurrentPage = 1;
+        await LoadEntries();
+    }
+
+    private async Task ChangePage(int page)
+    {
+        if (page >= 1 && page <= TotalPages)
+        {
+            CurrentPage = page;
+            await LoadEntries();
+        }
+    }
+
+    private async Task LoadEntries()
+    {
+        try
+        {
+            Loading = true;
+            ErrorMessage = null;
+            ErrorDetails = null;
+            
+            List<int>? moodIds = SelectedMoodId > 0 ? new List<int> { SelectedMoodId } : null;
+            List<int>? tagIds = SelectedTagId > 0 ? new List<int> { SelectedTagId } : null;
+            
+            var result = await JournalService.SearchEntriesAsync(
+                searchTerm: string.IsNullOrWhiteSpace(SearchTerm) ? null : SearchTerm,
+                startDate: StartDate,
+                endDate: EndDate,
+                moodIds: moodIds,
+                tagIds: tagIds,
+                pageNumber: CurrentPage,
+                pageSize: PageSize);
+            
+            Entries = result.Entries;
+            TotalCount = result.TotalCount;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = "Failed to load journal entries";
+            ErrorDetails = ex.Message + "\n" + ex.StackTrace;
+        }
+        finally
+        {
+            Loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RetryLoad()
+    {
+        await LoadEntries();
+    }
+}

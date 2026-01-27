@@ -1,0 +1,381 @@
+@page "/"
+@inject IStreakService StreakService
+
+<PageTitle>Home - Journal App</PageTitle>
+
+<div class="home-container">
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <span class="hero-badge">Personal Journal</span>
+            <h1 class="hero-title">Capture your thoughts,<br/>one day at a time</h1>
+            <p class="hero-subtitle">Track your moods, reflect on your journey, and build a habit of mindful journaling.</p>
+            <div class="hero-actions">
+                <a href="/journal/create" class="btn btn-primary btn-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20h9"/>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                    </svg>
+                    Write Today's Entry
+                </a>
+                <a href="/journal/list" class="btn btn-secondary btn-lg">
+                    View Journal
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    @if (StreakInfo != null)
+    {
+        <section class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card streak">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value">@StreakInfo.CurrentStreak</span>
+                        <span class="stat-label">Day Streak</span>
+                    </div>
+                </div>
+                
+                <div class="stat-card best">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                            <path d="M4 22h16"/>
+                            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+                            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+                            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value">@StreakInfo.LongestStreak</span>
+                        <span class="stat-label">Best Streak</span>
+                    </div>
+                </div>
+                
+                <div class="stat-card total">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value">@StreakInfo.TotalEntries</span>
+                        <span class="stat-label">Total Entries</span>
+                    </div>
+                </div>
+            </div>
+
+            @if (StreakInfo.RecentMissedDays.Any())
+            {
+                <div class="missed-days-alert">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <span>Recent missed days: @string.Join(", ", StreakInfo.RecentMissedDays.Select(d => d.ToString("MMM dd")))</span>
+                </div>
+            }
+        </section>
+    }
+
+    <!-- Features Section -->
+    <section class="features-section">
+        <h2 class="section-title">Everything you need</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon mood">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                        <line x1="9" y1="9" x2="9.01" y2="9"/>
+                        <line x1="15" y1="9" x2="15.01" y2="9"/>
+                    </svg>
+                </div>
+                <h3>Mood Tracking</h3>
+                <p>Track your primary mood and secondary emotions to understand your patterns over time.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon tags">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/>
+                        <path d="M7 7h.01"/>
+                    </svg>
+                </div>
+                <h3>Smart Tags</h3>
+                <p>Organize entries with custom tags for easy searching and categorization.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon analytics">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 3v18h18"/>
+                        <path d="m19 9-5 5-4-4-3 3"/>
+                    </svg>
+                </div>
+                <h3>Analytics</h3>
+                <p>Visualize your journaling habits and mood trends with insightful dashboards.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon export">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" x2="12" y1="15" y2="3"/>
+                    </svg>
+                </div>
+                <h3>Export</h3>
+                <p>Download your journal entries as beautifully formatted documents.</p>
+            </div>
+        </div>
+    </section>
+</div>
+
+<style>
+    .home-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    /* Hero */
+    .hero {
+        text-align: center;
+        padding: 2rem 0 3rem;
+    }
+
+    .hero-badge {
+        display: inline-block;
+        padding: 0.375rem 0.875rem;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+        color: var(--accent);
+        border-radius: 20px;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+    }
+
+    .hero-title {
+        font-size: 2.5rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        margin: 0 0 1rem;
+        line-height: 1.2;
+        letter-spacing: -0.03em;
+    }
+
+    .hero-subtitle {
+        font-size: 1.125rem;
+        color: var(--text-secondary);
+        margin: 0 0 2rem;
+        max-width: 500px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .hero-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .hero-actions .btn-lg {
+        padding: 0.875rem 1.5rem;
+    }
+
+    /* Stats */
+    .stats-section {
+        margin-bottom: 3rem;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+    }
+
+    .stat-card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: all 0.2s ease;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow);
+    }
+
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .stat-card.streak .stat-icon {
+        background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+        color: white;
+    }
+
+    .stat-card.best .stat-icon {
+        background: linear-gradient(135deg, #eab308 0%, #facc15 100%);
+        color: white;
+    }
+
+    .stat-card.total .stat-icon {
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        color: white;
+    }
+
+    .stat-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat-value {
+        font-size: 1.75rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        line-height: 1;
+    }
+
+    .stat-label {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        margin-top: 0.25rem;
+    }
+
+    .missed-days-alert {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.875rem 1rem;
+        background: rgba(245, 158, 11, 0.1);
+        border-radius: 10px;
+        color: #d97706;
+        font-size: 0.875rem;
+        margin-top: 1rem;
+    }
+
+    /* Features */
+    .features-section {
+        padding: 2rem 0;
+    }
+
+    .section-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0 0 1.5rem;
+        text-align: center;
+    }
+
+    .features-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+
+    .feature-card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 1.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .feature-card:hover {
+        border-color: var(--accent);
+    }
+
+    .feature-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 1rem;
+    }
+
+    .feature-icon.mood {
+        background: rgba(34, 197, 94, 0.1);
+        color: #22c55e;
+    }
+
+    .feature-icon.tags {
+        background: rgba(99, 102, 241, 0.1);
+        color: #6366f1;
+    }
+
+    .feature-icon.analytics {
+        background: rgba(236, 72, 153, 0.1);
+        color: #ec4899;
+    }
+
+    .feature-icon.export {
+        background: rgba(14, 165, 233, 0.1);
+        color: #0ea5e9;
+    }
+
+    .feature-card h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 0.5rem;
+    }
+
+    .feature-card p {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin: 0;
+        line-height: 1.5;
+    }
+
+    @@media (max-width: 640px) {
+        .hero-title {
+            font-size: 1.75rem;
+        }
+
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .features-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@code {
+    private StreakInfo? StreakInfo { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            StreakInfo = await StreakService.GetStreakInfoAsync();
+        }
+        catch
+        {
+            // Silently fail - streaks are nice to have but not critical
+        }
+    }
+}

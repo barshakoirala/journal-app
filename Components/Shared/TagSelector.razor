@@ -1,0 +1,103 @@
+<div class="tag-selector">
+    <div class="mb-2">
+        <input type="text" 
+               class="form-control" 
+               placeholder="Search tags..." 
+               @bind="@SearchText"
+               @bind:event="oninput" />
+    </div>
+    
+    <div class="tag-list mb-3" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
+        @foreach (var tag in FilteredTags)
+        {
+            <div class="form-check">
+                <input class="form-check-input" 
+                       type="checkbox" 
+                       id="tag-@tag.Id"
+                       checked="@(SelectedTagIds?.Contains(tag.Id) ?? false)"
+                       @onchange="@(() => ToggleTag(tag.Id))" />
+                <label class="form-check-label" for="tag-@tag.Id">
+                    @tag.Name
+                    @if (tag.IsPreBuilt)
+                    {
+                        <span class="badge bg-secondary">Pre-built</span>
+                    }
+                </label>
+            </div>
+        }
+    </div>
+
+    <div class="mb-3">
+        <div class="input-group">
+            <input type="text" 
+                   class="form-control" 
+                   placeholder="Create new tag..." 
+                   @bind="@NewTagName"
+                   @onkeypress="@(e => { if (e.Key == "Enter") CreateNewTag(); })" />
+            <button class="btn btn-outline-secondary" type="button" @onclick="CreateNewTag">Add</button>
+        </div>
+    </div>
+
+    @if (SelectedTagIds != null && SelectedTagIds.Any())
+    {
+        <div class="selected-tags">
+            <strong>Selected:</strong>
+            @foreach (var tagId in SelectedTagIds)
+            {
+                var tag = Tags.FirstOrDefault(t => t.Id == tagId);
+                if (tag != null)
+                {
+                    <span class="badge bg-primary me-1">@tag.Name</span>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<Tag> Tags { get; set; } = new();
+    [Parameter] public List<int> SelectedTagIds { get; set; } = new();
+    [Parameter] public EventCallback<List<int>> OnTagsSelected { get; set; }
+    [Parameter] public EventCallback<string> OnCreateTag { get; set; }
+
+    private string SearchText { get; set; } = string.Empty;
+    private string NewTagName { get; set; } = string.Empty;
+
+    private List<Tag> FilteredTags => Tags
+        .Where(t => string.IsNullOrEmpty(SearchText) || 
+                    t.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
+        .OrderBy(t => t.IsPreBuilt ? 0 : 1)
+        .ThenBy(t => t.Name)
+        .ToList();
+
+    private async Task ToggleTag(int tagId)
+    {
+        SelectedTagIds ??= new List<int>();
+        
+        if (SelectedTagIds.Contains(tagId))
+        {
+            SelectedTagIds.Remove(tagId);
+        }
+        else
+        {
+            SelectedTagIds.Add(tagId);
+        }
+        
+        if (OnTagsSelected.HasDelegate)
+        {
+            await OnTagsSelected.InvokeAsync(SelectedTagIds);
+        }
+    }
+
+    private async Task CreateNewTag()
+    {
+        if (!string.IsNullOrWhiteSpace(NewTagName))
+        {
+            if (OnCreateTag.HasDelegate)
+            {
+                await OnCreateTag.InvokeAsync(NewTagName);
+            }
+            NewTagName = string.Empty;
+        }
+    }
+}

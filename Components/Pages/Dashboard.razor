@@ -1,0 +1,216 @@
+@page "/dashboard"
+@inject IAnalyticsService AnalyticsService
+@inject IStreakService StreakService
+
+<PageTitle>Dashboard - Analytics</PageTitle>
+
+<div class="container mt-4">
+    <h2>Dashboard & Analytics</h2>
+
+    <!-- Date Range Filter -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Filter by Date Range</h5>
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">From Date</label>
+                    <input type="date" class="form-control" value="@(StartDate?.ToString("yyyy-MM-dd") ?? "")" 
+                           @onchange="@(async (ChangeEventArgs e) => { StartDate = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!); await LoadAnalytics(); })" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">To Date</label>
+                    <input type="date" class="form-control" value="@(EndDate?.ToString("yyyy-MM-dd") ?? "")" 
+                           @onchange="@(async (ChangeEventArgs e) => { EndDate = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!); await LoadAnalytics(); })" />
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button class="btn btn-secondary" @onclick="ClearDateFilter">Clear Filter</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (Loading)
+    {
+        <p>Loading analytics...</p>
+    }
+    else
+    {
+        <!-- Mood Distribution -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Mood Distribution</h5>
+                        @if (MoodDistribution != null && MoodDistribution.Total > 0)
+                        {
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Positive</span>
+                                    <span><strong>@MoodDistribution.PositiveCount</strong> (@MoodDistribution.PositivePercentage.ToString("F1")%)</span>
+                                </div>
+                                <div class="progress" style="height: 25px;">
+                                    <div class="progress-bar bg-success" role="progressbar" 
+                                         style="width: @MoodDistribution.PositivePercentage%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Neutral</span>
+                                    <span><strong>@MoodDistribution.NeutralCount</strong> (@MoodDistribution.NeutralPercentage.ToString("F1")%)</span>
+                                </div>
+                                <div class="progress" style="height: 25px;">
+                                    <div class="progress-bar bg-secondary" role="progressbar" 
+                                         style="width: @MoodDistribution.NeutralPercentage%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Negative</span>
+                                    <span><strong>@MoodDistribution.NegativeCount</strong> (@MoodDistribution.NegativePercentage.ToString("F1")%)</span>
+                                </div>
+                                <div class="progress" style="height: 25px;">
+                                    <div class="progress-bar bg-danger" role="progressbar" 
+                                         style="width: @MoodDistribution.NegativePercentage%"></div>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No data available</p>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Most Frequent Mood</h5>
+                        @if (MostFrequentMood != null)
+                        {
+                            <h3 class="text-primary">@MostFrequentMood.Name</h3>
+                            <p class="text-muted">@MostFrequentMood.Category</p>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No data available</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Most Used Tags -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Most Used Tags</h5>
+                        @if (MostUsedTags != null && MostUsedTags.Any())
+                        {
+                            <div class="row">
+                                @foreach (var tag in MostUsedTags)
+                                {
+                                    <div class="col-md-3 mb-3">
+                                        <div class="d-flex justify-content-between align-items-center p-2 border rounded">
+                                            <span><strong>@tag.TagName</strong></span>
+                                            <span class="badge bg-primary">@tag.UsageCount</span>
+                                        </div>
+                                        <small class="text-muted">@tag.Percentage.ToString("F1")% of entries</small>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No tags used yet</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Word Count Trends -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Word Count Trends (by Week)</h5>
+                        @if (WordCountTrends != null && WordCountTrends.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Week</th>
+                                            <th>Average Words</th>
+                                            <th>Entries</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var trend in WordCountTrends)
+                                        {
+                                            <tr>
+                                                <td>@trend.Period.ToString("MMM dd, yyyy")</td>
+                                                <td>@trend.AverageWordCount words</td>
+                                                <td>@trend.EntryCount entries</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No data available</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool Loading { get; set; } = true;
+    private DateTime? StartDate { get; set; }
+    private DateTime? EndDate { get; set; }
+    
+    private MoodDistribution? MoodDistribution { get; set; }
+    private Mood? MostFrequentMood { get; set; }
+    private List<TagUsage>? MostUsedTags { get; set; }
+    private List<WordCountTrend>? WordCountTrends { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAnalytics();
+    }
+
+    private async Task ClearDateFilter()
+    {
+        StartDate = null;
+        EndDate = null;
+        await LoadAnalytics();
+    }
+
+    private async Task LoadAnalytics()
+    {
+        try
+        {
+            Loading = true;
+            
+            MoodDistribution = await AnalyticsService.GetMoodDistributionAsync(StartDate, EndDate);
+            MostFrequentMood = await AnalyticsService.GetMostFrequentMoodAsync(StartDate, EndDate);
+            MostUsedTags = await AnalyticsService.GetMostUsedTagsAsync(10, StartDate, EndDate);
+            WordCountTrends = await AnalyticsService.GetWordCountTrendsAsync(StartDate, EndDate);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading analytics: {ex.Message}");
+        }
+        finally
+        {
+            Loading = false;
+            StateHasChanged();
+        }
+    }
+}

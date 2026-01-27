@@ -1,0 +1,44 @@
+# Build results
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+
+# Visual Studio / Rider / JetBrains
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# macOS
+.DS_Store
+*.xcuserstate
+
+# MAUI / iOS / Mac Catalyst
+*.app/
+*.ipa
+*.dSYM.zip
+*.dSYM/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# SQLite database files (local dev data)
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log

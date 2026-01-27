@@ -1,0 +1,87 @@
+<div class="mood-selector">
+    @if (IsMultiSelect)
+    {
+        <div class="row">
+            @foreach (var mood in Moods.GroupBy(m => m.Category))
+            {
+                <div class="col-md-4 mb-3">
+                    <h6>@mood.Key</h6>
+                    @foreach (var m in mood)
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="mood-@m.Id"
+                                   checked="@(SelectedMoodIds?.Contains(m.Id) ?? false)"
+                                   @onchange="@(() => ToggleMood(m.Id))" />
+                            <label class="form-check-label" for="mood-@m.Id">
+                                @m.Name
+                            </label>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        @if (SelectedMoodIds != null && SelectedMoodIds.Count > MaxSelections)
+        {
+            <div class="alert alert-warning">
+                Maximum @MaxSelections secondary moods allowed. Please deselect some.
+            </div>
+        }
+    }
+    else
+    {
+        <select class="form-select" @bind="@SelectedMoodId" @bind:after="@HandleMoodChange">
+            <option value="0">Select a mood...</option>
+            @foreach (var mood in Moods.GroupBy(m => m.Category))
+            {
+                <optgroup label="@mood.Key">
+                    @foreach (var m in mood)
+                    {
+                        <option value="@m.Id">@m.Name</option>
+                    }
+                </optgroup>
+            }
+        </select>
+    }
+</div>
+
+@code {
+    [Parameter] public List<Mood> Moods { get; set; } = new();
+    [Parameter] public int SelectedMoodId { get; set; }
+    [Parameter] public List<int>? SelectedMoodIds { get; set; }
+    [Parameter] public bool IsMultiSelect { get; set; } = false;
+    [Parameter] public int MaxSelections { get; set; } = 2;
+    [Parameter] public EventCallback<int> OnMoodSelected { get; set; }
+    [Parameter] public EventCallback<List<int>> OnMoodsSelected { get; set; }
+
+    private async Task HandleMoodChange()
+    {
+        if (OnMoodSelected.HasDelegate)
+        {
+            await OnMoodSelected.InvokeAsync(SelectedMoodId);
+        }
+    }
+
+    private async Task ToggleMood(int moodId)
+    {
+        SelectedMoodIds ??= new List<int>();
+        
+        if (SelectedMoodIds.Contains(moodId))
+        {
+            SelectedMoodIds.Remove(moodId);
+        }
+        else
+        {
+            if (SelectedMoodIds.Count < MaxSelections)
+            {
+                SelectedMoodIds.Add(moodId);
+            }
+        }
+        
+        if (OnMoodsSelected.HasDelegate)
+        {
+            await OnMoodsSelected.InvokeAsync(SelectedMoodIds);
+        }
+    }
+}

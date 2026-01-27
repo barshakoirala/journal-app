@@ -1,0 +1,192 @@
+@inherits LayoutComponentBase
+@inject IThemeService ThemeService
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@if (HasInitError)
+{
+    <div class="error-container">
+        <div class="error-card">
+            <div class="error-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+            </div>
+            <h2>Something went wrong</h2>
+            <p class="error-message">@InitErrorMessage</p>
+            @if (!string.IsNullOrEmpty(InitErrorStack))
+            {
+                <details class="error-details">
+                    <summary>Technical Details</summary>
+                    <pre>@InitErrorStack</pre>
+                </details>
+            }
+            <a href="/" class="btn-retry">Try Again</a>
+        </div>
+    </div>
+}
+else if (_needsAuthRedirect)
+{
+    <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <p>Redirecting...</p>
+    </div>
+}
+else
+{
+    <div class="app-layout" data-theme="@ThemeService.CurrentTheme">
+        <aside class="sidebar">
+            <NavMenu />
+        </aside>
+
+        <div class="main-wrapper">
+            <header class="app-header">
+                <div class="header-left">
+                    <h1 class="page-title">@GetPageTitle()</h1>
+                </div>
+                <div class="header-right">
+                    <button class="header-btn theme-toggle" @onclick="ToggleTheme" title="Toggle theme">
+                        @if (ThemeService.CurrentTheme == "dark")
+                        {
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="4"/>
+                                <path d="M12 2v2"/>
+                                <path d="M12 20v2"/>
+                                <path d="m4.93 4.93 1.41 1.41"/>
+                                <path d="m17.66 17.66 1.41 1.41"/>
+                                <path d="M2 12h2"/>
+                                <path d="M20 12h2"/>
+                                <path d="m6.34 17.66-1.41 1.41"/>
+                                <path d="m19.07 4.93-1.41 1.41"/>
+                            </svg>
+                        }
+                        else
+                        {
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+                            </svg>
+                        }
+                    </button>
+                    @if (AuthService.IsAuthenticated)
+                    {
+                        <button class="header-btn logout-btn" @onclick="Logout" title="Logout">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                                <polyline points="16 17 21 12 16 7"/>
+                                <line x1="21" x2="9" y1="12" y2="12"/>
+                            </svg>
+                        </button>
+                    }
+                </div>
+            </header>
+
+            <main class="main-content">
+                @Body
+            </main>
+        </div>
+    </div>
+}
+
+@code {
+    private bool IsLoginPage => Navigation.Uri.Contains("/login") || Navigation.Uri.Contains("/setup-password");
+    private bool HasInitError { get; set; } = false;
+    private string? InitErrorMessage { get; set; }
+    private string? InitErrorStack { get; set; }
+    private bool _needsAuthRedirect = false;
+    private string? _redirectTarget = null;
+
+    private string GetPageTitle()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var path = uri.AbsolutePath.ToLower();
+        
+        return path switch
+        {
+            "/" => "Welcome",
+            "/journal/list" => "My Journal",
+            "/journal/create" => "New Entry",
+            var p when p.StartsWith("/journal/edit") => "Edit Entry",
+            "/dashboard" => "Dashboard",
+            "/export" => "Export",
+            "/login" => "Login",
+            "/setup-password" => "Setup",
+            _ => "Journal"
+        };
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Console.WriteLine("MainLayout: Initializing...");
+            await ThemeService.InitializeThemeAsync();
+            ThemeService.OnThemeChanged += StateHasChanged;
+            Navigation.LocationChanged += OnLocationChanged;
+            
+            var isPasswordSet = await AuthService.IsPasswordSetAsync();
+            Console.WriteLine($"MainLayout: Password set = {isPasswordSet}, IsAuthenticated = {AuthService.IsAuthenticated}");
+            
+            if (isPasswordSet && !AuthService.IsAuthenticated && !IsLoginPage)
+            {
+                _needsAuthRedirect = true;
+                _redirectTarget = "/login";
+            }
+            else if (!isPasswordSet && !IsLoginPage)
+            {
+                _needsAuthRedirect = true;
+                _redirectTarget = "/setup-password";
+            }
+            
+            Console.WriteLine("MainLayout: Initialization complete");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"MainLayout ERROR: {ex.Message}");
+            Console.WriteLine($"Stack: {ex.StackTrace}");
+            HasInitError = true;
+            InitErrorMessage = ex.Message;
+            InitErrorStack = ex.StackTrace;
+            if (ex.InnerException != null)
+            {
+                InitErrorMessage += $"\n\nInner: {ex.InnerException.Message}";
+            }
+        }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        StateHasChanged();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (_needsAuthRedirect && !string.IsNullOrEmpty(_redirectTarget))
+        {
+            _needsAuthRedirect = false;
+            var target = _redirectTarget;
+            _redirectTarget = null;
+            Navigation.NavigateTo(target);
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        var newTheme = ThemeService.CurrentTheme == "light" ? "dark" : "light";
+        await ThemeService.SetThemeAsync(newTheme);
+    }
+
+    private async Task Logout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+
+    public void Dispose()
+    {
+        ThemeService.OnThemeChanged -= StateHasChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

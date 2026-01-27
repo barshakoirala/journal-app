@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>JournalAppBlazor</title>
+    <base href="/" />
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="JournalAppBlazor.styles.css" />
+    <link rel="icon" href="data:,">
+</head>
+
+<body>
+
+    <div class="status-bar-safe-area"></div>
+
+    <div id="app">
+        <div style="padding: 20px; text-align: center;">
+            <h3>Loading Journal App...</h3>
+            <p>Please wait while the app initializes.</p>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui" data-nosnippet style="display:none; position:fixed; bottom:0; left:0; right:0; background:#d32f2f; color:white; padding:15px; z-index:9999;">
+        <div style="max-width:900px; margin:0 auto;">
+            <strong>Error:</strong> <span id="error-message">An error has occurred.</span>
+            <pre id="error-details" style="margin-top:10px; font-size:11px; max-height:300px; overflow:auto; background:rgba(0,0,0,0.3); padding:10px; border-radius:4px; white-space:pre-wrap; word-break:break-all;"></pre>
+            <div style="margin-top:10px;">
+                <a href="" class="reload" style="color:white; margin-right:15px; text-decoration:underline;">Reload</a>
+                <a class="dismiss" style="color:white; cursor:pointer; text-decoration:underline;" onclick="document.getElementById('blazor-error-ui').style.display='none'">Dismiss</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="_framework/blazor.webview.js"></script>
+    <script>
+        // Store all errors for display
+        var allErrors = [];
+        
+        // Apply theme on page load
+        window.applyTheme = function(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            document.body.setAttribute('data-theme', theme);
+        };
+        
+        // Function to show error in UI
+        function showError(message, details, source) {
+            // Skip "Blazor has already started" - it's harmless
+            if (message && message.includes('Blazor has already started')) {
+                console.log('Suppressed: Blazor has already started (harmless)');
+                return;
+            }
+            
+            var errorUI = document.getElementById('blazor-error-ui');
+            var errorMsg = document.getElementById('error-message');
+            var errorDetails = document.getElementById('error-details');
+            
+            var errorEntry = '[' + (source || 'unknown') + '] ' + message;
+            if (details) {
+                errorEntry += '\n' + details;
+            }
+            allErrors.push(errorEntry);
+            
+            if (errorUI && errorMsg && errorDetails) {
+                errorUI.style.display = 'block';
+                errorMsg.textContent = message || 'Unknown error';
+                errorDetails.textContent = allErrors.join('\n\n---\n\n');
+            }
+            
+            console.error('[' + source + ']', message, details);
+        }
+        
+        // Global error handler
+        window.onerror = function(message, source, lineno, colno, error) {
+            var details = 'Source: ' + source + '\nLine: ' + lineno + ', Column: ' + colno;
+            if (error && error.stack) {
+                details += '\n\nStack:\n' + error.stack;
+            }
+            showError(message, details, 'JS Error');
+            return false; // Let the error propagate
+        };
+        
+        // Unhandled promise rejection handler
+        window.addEventListener('unhandledrejection', function(event) {
+            var reason = event.reason;
+            var message = 'Promise Rejection';
+            var details = '';
+            
+            if (reason instanceof Error) {
+                message = reason.message;
+                details = reason.stack || '';
+            } else if (typeof reason === 'string') {
+                message = reason;
+            } else {
+                try {
+                    details = JSON.stringify(reason, null, 2);
+                } catch(e) {
+                    details = String(reason);
+                }
+            }
+            
+            showError(message, details, 'Promise');
+        });
+        
+        // Intercept console.error to catch Blazor errors
+        var originalConsoleError = console.error;
+        console.error = function() {
+            var args = Array.prototype.slice.call(arguments);
+            var message = args.map(function(arg) {
+                if (typeof arg === 'object') {
+                    try {
+                        if (arg instanceof Error) {
+                            return arg.message + '\n' + arg.stack;
+                        }
+                        return JSON.stringify(arg, null, 2);
+                    } catch(e) {
+                        return String(arg);
+                    }
+                }
+                return String(arg);
+            }).join(' ');
+            
+            // Show in UI if it looks like a real error
+            if (message && !message.includes('Blazor has already started')) {
+                var errorUI = document.getElementById('blazor-error-ui');
+                var errorDetails = document.getElementById('error-details');
+                var errorMsg = document.getElementById('error-message');
+                
+                if (errorUI && errorUI.style.display !== 'none') {
+                    // Error UI already showing, append to details
+                    if (errorDetails) {
+                        allErrors.push('[Console] ' + message);
+                        errorDetails.textContent = allErrors.join('\n\n---\n\n');
+                    }
+                }
+            }
+            
+            originalConsoleError.apply(console, arguments);
+        };
+        
+        // Watch for Blazor to show the error UI and capture any .NET exceptions
+        var observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    var errorUI = document.getElementById('blazor-error-ui');
+                    if (errorUI && errorUI.style.display !== 'none') {
+                        // Error UI became visible - check if we have details
+                        var errorDetails = document.getElementById('error-details');
+                        if (errorDetails && !errorDetails.textContent) {
+                            errorDetails.textContent = 'Blazor error occurred. Check the terminal/console for .NET exception details.\n\nTip: Run with "dotnet run" and check terminal output.';
+                        }
+                    }
+                }
+            });
+        });
+        
+        // Start observing after a short delay
+        setTimeout(function() {
+            var errorUI = document.getElementById('blazor-error-ui');
+            if (errorUI) {
+                observer.observe(errorUI, { attributes: true });
+            }
+        }, 1000);
+    </script>
+
+</body>
+
+</html>
