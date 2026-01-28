@@ -1,0 +1,376 @@
+@page "/settings"
+@using JournalAppBlazor.Services
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="settings-container">
+    <div class="settings-header">
+        <h1>Settings</h1>
+        <p class="subtitle">Manage your account</p>
+    </div>
+
+    <div class="settings-content">
+        <!-- Profile Section -->
+        <div class="settings-card">
+            <div class="card-header">
+                <div class="card-icon profile">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                </div>
+                <div class="card-title-wrap">
+                    <h2>Profile Information</h2>
+                    <p>Your account details</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="profile-info">
+                    <div class="avatar">
+                        <span class="avatar-text">@GetInitials()</span>
+                    </div>
+                    <div class="user-details">
+                        <div class="info-row">
+                            <span class="label">Username</span>
+                            <span class="value">@(AuthService.CurrentUsername ?? "Unknown")</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">User ID</span>
+                            <span class="value">#@(AuthService.CurrentUserId?.ToString() ?? "N/A")</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Status</span>
+                            <span class="status-badge active">Active</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Account Actions -->
+        <div class="settings-card danger-zone">
+            <div class="card-header">
+                <div class="card-icon logout">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" x2="9" y1="12" y2="12"/>
+                    </svg>
+                </div>
+                <div class="card-title-wrap">
+                    <h2>Session</h2>
+                    <p>Manage your login session</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <p class="logout-description">
+                    Logging out will end your current session. You'll need to sign in again to access your journal entries.
+                </p>
+                <button class="logout-btn" @onclick="HandleLogout" disabled="@isLoggingOut">
+                    @if (isLoggingOut)
+                    {
+                        <span class="spinner"></span>
+                        <span>Logging out...</span>
+                    }
+                    else
+                    {
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                            <polyline points="16 17 21 12 16 7"/>
+                            <line x1="21" x2="9" y1="12" y2="12"/>
+                        </svg>
+                        <span>Logout</span>
+                    }
+                </button>
+            </div>
+        </div>
+
+        <!-- App Info -->
+        <div class="settings-card">
+            <div class="card-header">
+                <div class="card-icon info">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4"/>
+                        <path d="M12 8h.01"/>
+                    </svg>
+                </div>
+                <div class="card-title-wrap">
+                    <h2>About</h2>
+                    <p>App information</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="app-info">
+                    <div class="info-row">
+                        <span class="label">App Name</span>
+                        <span class="value">Journal App</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Version</span>
+                        <span class="value">1.0.0</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Framework</span>
+                        <span class="value">.NET MAUI Blazor</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .settings-container {
+        max-width: 700px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem;
+    }
+
+    .settings-header {
+        margin-bottom: 2rem;
+    }
+
+    .settings-header h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0 0 0.5rem 0;
+    }
+
+    .settings-header .subtitle {
+        color: #64748b;
+        font-size: 1rem;
+        margin: 0;
+    }
+
+    .settings-content {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .settings-card {
+        background: white;
+        border-radius: 16px;
+        border: 1px solid #e2e8f0;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .card-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid #f1f5f9;
+        background: #f8fafc;
+    }
+
+    .card-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .card-icon.profile {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: white;
+    }
+
+    .card-icon.logout {
+        background: linear-gradient(135deg, #ef4444, #f97316);
+        color: white;
+    }
+
+    .card-icon.info {
+        background: linear-gradient(135deg, #3b82f6, #06b6d4);
+        color: white;
+    }
+
+    .card-title-wrap h2 {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0 0 0.25rem 0;
+    }
+
+    .card-title-wrap p {
+        font-size: 0.875rem;
+        color: #64748b;
+        margin: 0;
+    }
+
+    .card-body {
+        padding: 1.5rem;
+    }
+
+    /* Profile Info */
+    .profile-info {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    }
+
+    .avatar-text {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: white;
+        text-transform: uppercase;
+    }
+
+    .user-details {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .info-row .label {
+        font-size: 0.875rem;
+        color: #64748b;
+    }
+
+    .info-row .value {
+        font-size: 0.9375rem;
+        font-weight: 500;
+        color: #1e293b;
+    }
+
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+
+    .status-badge.active {
+        background: #dcfce7;
+        color: #16a34a;
+    }
+
+    /* Logout Section */
+    .logout-description {
+        color: #64748b;
+        font-size: 0.9375rem;
+        line-height: 1.6;
+        margin: 0 0 1.25rem 0;
+    }
+
+    .logout-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+    }
+
+    .logout-btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    }
+
+    .logout-btn:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* App Info */
+    .app-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    /* Responsive */
+    @@media (max-width: 640px) {
+        .settings-container {
+            padding: 1.5rem 1rem;
+        }
+
+        .profile-info {
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .user-details {
+            width: 100%;
+        }
+
+        .info-row {
+            flex-direction: column;
+            gap: 0.25rem;
+            text-align: center;
+        }
+    }
+</style>
+
+@code {
+    private bool isLoggingOut = false;
+
+    private string GetInitials()
+    {
+        var username = AuthService.CurrentUsername;
+        if (string.IsNullOrEmpty(username))
+            return "?";
+        
+        return username.Length >= 2 
+            ? username.Substring(0, 2).ToUpper() 
+            : username.ToUpper();
+    }
+
+    private async Task HandleLogout()
+    {
+        isLoggingOut = true;
+        StateHasChanged();
+
+        await Task.Delay(500); // Brief delay for UX
+        await AuthService.LogoutAsync();
+        
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

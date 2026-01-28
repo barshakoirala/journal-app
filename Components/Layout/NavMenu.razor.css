@@ -375,6 +375,11 @@
     color: #60a5fa;
 }
 
+.nav-icon-wrapper.calendar {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(168, 85, 247, 0.1));
+    color: #c084fc;
+}
+
 .nav-icon-wrapper.stats {
     background: linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(236, 72, 153, 0.1));
     color: #f472b6;
@@ -383,6 +388,11 @@
 .nav-icon-wrapper.export {
     background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.1));
     color: #fbbf24;
+}
+
+.nav-icon-wrapper.settings {
+    background: linear-gradient(135deg, rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.1));
+    color: #94a3b8;
 }
 
 .nav-item-wrapper:hover .nav-icon-wrapper,
