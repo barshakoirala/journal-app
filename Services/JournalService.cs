@@ -1,17 +1,24 @@
-using Microsoft.EntityFrameworkCore;
-using JournalAppBlazor.Data;
 using JournalAppBlazor.Models;
+using JournalAppBlazor.Repositories;
 
 namespace JournalAppBlazor.Services;
 
 public class JournalService : IJournalService
 {
-    private readonly JournalDbContext _context;
+    private readonly IJournalEntryRepository _journalEntryRepository;
+    private readonly IJournalEntryMoodRepository _journalEntryMoodRepository;
+    private readonly IJournalEntryTagRepository _journalEntryTagRepository;
     private readonly IAuthService _authService;
 
-    public JournalService(JournalDbContext context, IAuthService authService)
+    public JournalService(
+        IJournalEntryRepository journalEntryRepository,
+        IJournalEntryMoodRepository journalEntryMoodRepository,
+        IJournalEntryTagRepository journalEntryTagRepository,
+        IAuthService authService)
     {
-        _context = context;
+        _journalEntryRepository = journalEntryRepository;
+        _journalEntryMoodRepository = journalEntryMoodRepository;
+        _journalEntryTagRepository = journalEntryTagRepository;
         _authService = authService;
     }
 
@@ -24,40 +31,19 @@ public class JournalService : IJournalService
     public async Task<JournalEntry?> GetEntryByDateAsync(DateTime date)
     {
         var userId = GetCurrentUserId();
-        var dateOnly = date.Date;
-        return await _context.JournalEntries
-            .Include(e => e.PrimaryMood)
-            .Include(e => e.SecondaryMoods)
-                .ThenInclude(sm => sm.Mood)
-            .Include(e => e.Tags)
-                .ThenInclude(t => t.Tag)
-            .FirstOrDefaultAsync(e => e.UserId == userId && e.Date.Date == dateOnly);
+        return await _journalEntryRepository.GetByDateWithIncludesAsync(date, userId);
     }
 
     public async Task<JournalEntry?> GetEntryByIdAsync(int id)
     {
         var userId = GetCurrentUserId();
-        return await _context.JournalEntries
-            .Include(e => e.PrimaryMood)
-            .Include(e => e.SecondaryMoods)
-                .ThenInclude(sm => sm.Mood)
-            .Include(e => e.Tags)
-                .ThenInclude(t => t.Tag)
-            .FirstOrDefaultAsync(e => e.UserId == userId && e.Id == id);
+        return await _journalEntryRepository.GetByIdWithIncludesAsync(id, userId);
     }
 
     public async Task<List<JournalEntry>> GetAllEntriesAsync()
     {
         var userId = GetCurrentUserId();
-        return await _context.JournalEntries
-            .Where(e => e.UserId == userId)
-            .Include(e => e.PrimaryMood)
-            .Include(e => e.SecondaryMoods)
-                .ThenInclude(sm => sm.Mood)
-            .Include(e => e.Tags)
-                .ThenInclude(t => t.Tag)
-            .OrderByDescending(e => e.Date)
-            .ToListAsync();
+        return await _journalEntryRepository.GetAllByUserWithIncludesAsync(userId);
     }
 
     public async Task<JournalEntry> CreateEntryAsync(JournalEntry entry, List<int>? secondaryMoodIds = null, List<int>? tagIds = null)
@@ -99,40 +85,25 @@ public class JournalService : IJournalService
 
         try
         {
-            _context.JournalEntries.Add(entry);
-            await _context.SaveChangesAsync();
+            await _journalEntryRepository.AddAsync(entry);
+            await _journalEntryRepository.SaveChangesAsync();
 
             // Add secondary moods (up to 2)
             if (secondaryMoodIds != null && secondaryMoodIds.Any())
             {
-                var moodsToAdd = secondaryMoodIds.Take(2).ToList();
-                foreach (var moodId in moodsToAdd)
-                {
-                    _context.JournalEntryMoods.Add(new JournalEntryMood
-                    {
-                        JournalEntryId = entry.Id,
-                        MoodId = moodId
-                    });
-                }
+                await _journalEntryMoodRepository.AddSecondaryMoodsAsync(entry.Id, secondaryMoodIds);
             }
 
             // Add tags
             if (tagIds != null && tagIds.Any())
             {
-                foreach (var tagId in tagIds)
-                {
-                    _context.JournalEntryTags.Add(new JournalEntryTag
-                    {
-                        JournalEntryId = entry.Id,
-                        TagId = tagId
-                    });
-                }
+                await _journalEntryTagRepository.AddTagsAsync(entry.Id, tagIds);
             }
 
-            await _context.SaveChangesAsync();
+            await _journalEntryRepository.SaveChangesAsync();
             return await GetEntryByIdAsync(entry.Id) ?? entry;
         }
-        catch (DbUpdateException ex)
+        catch (Exception ex) when (ex.GetType().Name == "DbUpdateException")
         {
             // Preserve the full exception chain for better error reporting
             var errorMessage = $"Database error: {ex.Message}";
@@ -152,10 +123,7 @@ public class JournalService : IJournalService
     {
         var userId = GetCurrentUserId();
 
-        var existingEntry = await _context.JournalEntries
-            .Include(e => e.SecondaryMoods)
-            .Include(e => e.Tags)
-            .FirstOrDefaultAsync(e => e.UserId == userId && e.Id == entry.Id);
+        var existingEntry = await _journalEntryRepository.GetByIdForUpdateAsync(entry.Id, userId);
 
         if (existingEntry == null)
         {
@@ -169,79 +137,45 @@ public class JournalService : IJournalService
         existingEntry.UpdatedAt = DateTime.Now;
 
         // Update secondary moods
-        _context.JournalEntryMoods.RemoveRange(existingEntry.SecondaryMoods);
+        await _journalEntryMoodRepository.RemoveByJournalEntryIdAsync(existingEntry.Id);
         if (secondaryMoodIds != null && secondaryMoodIds.Any())
         {
-            var moodsToAdd = secondaryMoodIds.Take(2).ToList();
-            foreach (var moodId in moodsToAdd)
-            {
-                _context.JournalEntryMoods.Add(new JournalEntryMood
-                {
-                    JournalEntryId = existingEntry.Id,
-                    MoodId = moodId
-                });
-            }
+            await _journalEntryMoodRepository.AddSecondaryMoodsAsync(existingEntry.Id, secondaryMoodIds);
         }
 
         // Update tags
-        _context.JournalEntryTags.RemoveRange(existingEntry.Tags);
+        await _journalEntryTagRepository.RemoveByJournalEntryIdAsync(existingEntry.Id);
         if (tagIds != null && tagIds.Any())
         {
-            foreach (var tagId in tagIds)
-            {
-                _context.JournalEntryTags.Add(new JournalEntryTag
-                {
-                    JournalEntryId = existingEntry.Id,
-                    TagId = tagId
-                });
-            }
+            await _journalEntryTagRepository.AddTagsAsync(existingEntry.Id, tagIds);
         }
 
-        await _context.SaveChangesAsync();
+        await _journalEntryRepository.SaveChangesAsync();
         return await GetEntryByIdAsync(existingEntry.Id) ?? existingEntry;
     }
 
     public async Task DeleteEntryAsync(int id)
     {
         var userId = GetCurrentUserId();
-        var entry = await _context.JournalEntries
-            .FirstOrDefaultAsync(e => e.UserId == userId && e.Id == id);
+        var entry = await _journalEntryRepository.FirstOrDefaultAsync(e => e.UserId == userId && e.Id == id);
 
         if (entry != null)
         {
-            _context.JournalEntries.Remove(entry);
-            await _context.SaveChangesAsync();
+            _journalEntryRepository.Remove(entry);
+            await _journalEntryRepository.SaveChangesAsync();
         }
     }
 
     public async Task<bool> EntryExistsForDateAsync(DateTime date)
     {
         var userId = GetCurrentUserId();
-        var dateOnly = date.Date;
-        return await _context.JournalEntries.AnyAsync(e => e.UserId == userId && e.Date.Date == dateOnly);
+        return await _journalEntryRepository.ExistsForDateAsync(date, userId);
     }
 
     public async Task<(List<JournalEntry> Entries, int TotalCount)> GetEntriesPaginatedAsync(int pageNumber, int pageSize)
     {
         var userId = GetCurrentUserId();
-
-        var query = _context.JournalEntries
-            .Where(e => e.UserId == userId)
-            .Include(e => e.PrimaryMood)
-            .Include(e => e.SecondaryMoods)
-                .ThenInclude(sm => sm.Mood)
-            .Include(e => e.Tags)
-                .ThenInclude(t => t.Tag)
-            .OrderByDescending(e => e.Date);
-
-        var totalCount = await query.CountAsync();
-
-        var entries = await query
-            .Skip((pageNumber - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
-
-        return (entries, totalCount);
+        return await _journalEntryRepository.GetPaginatedAsync(userId, pageNumber, pageSize);
     }
 
     public async Task<(List<JournalEntry> Entries, int TotalCount)> SearchEntriesAsync(
@@ -254,58 +188,6 @@ public class JournalService : IJournalService
         int pageSize = 10)
     {
         var userId = GetCurrentUserId();
-
-        var query = _context.JournalEntries
-            .Where(e => e.UserId == userId)
-            .Include(e => e.PrimaryMood)
-            .Include(e => e.SecondaryMoods)
-                .ThenInclude(sm => sm.Mood)
-            .Include(e => e.Tags)
-                .ThenInclude(t => t.Tag)
-            .AsQueryable();
-
-        // Search by title or content
-        if (!string.IsNullOrWhiteSpace(searchTerm))
-        {
-            var searchLower = searchTerm.ToLower();
-            query = query.Where(e =>
-                e.Title.ToLower().Contains(searchLower) ||
-                e.Content.ToLower().Contains(searchLower));
-        }
-
-        // Filter by date range
-        if (startDate.HasValue)
-        {
-            query = query.Where(e => e.Date >= startDate.Value.Date);
-        }
-        if (endDate.HasValue)
-        {
-            query = query.Where(e => e.Date <= endDate.Value.Date);
-        }
-
-        // Filter by moods (primary or secondary)
-        if (moodIds != null && moodIds.Any())
-        {
-            query = query.Where(e =>
-                moodIds.Contains(e.PrimaryMoodId) ||
-                e.SecondaryMoods.Any(sm => moodIds.Contains(sm.MoodId)));
-        }
-
-        // Filter by tags
-        if (tagIds != null && tagIds.Any())
-        {
-            query = query.Where(e =>
-                e.Tags.Any(t => tagIds.Contains(t.TagId)));
-        }
-
-        var totalCount = await query.CountAsync();
-
-        var entries = await query
-            .OrderByDescending(e => e.Date)
-            .Skip((pageNumber - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
-
-        return (entries, totalCount);
+        return await _journalEntryRepository.SearchAsync(userId, searchTerm, startDate, endDate, moodIds, tagIds, pageNumber, pageSize);
     }
 }

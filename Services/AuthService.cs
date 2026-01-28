@@ -1,8 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
-using JournalAppBlazor.Data;
 using JournalAppBlazor.Models;
+using JournalAppBlazor.Repositories;
 
 namespace JournalAppBlazor.Services;
 
@@ -19,7 +18,7 @@ public interface IAuthService
 
 public class AuthService : IAuthService
 {
-    private readonly IDbContextFactory<JournalDbContext> _contextFactory;
+    private readonly IUserRepositoryFactory _userRepository;
     private const string IsAuthenticatedKey = "journal_app_authenticated";
     private const string CurrentUserIdKey = "journal_app_user_id";
     private const string CurrentUsernameKey = "journal_app_username";
@@ -28,9 +27,9 @@ public class AuthService : IAuthService
     public string? CurrentUsername { get; private set; }
     public int? CurrentUserId { get; private set; }
 
-    public AuthService(IDbContextFactory<JournalDbContext> contextFactory)
+    public AuthService(IUserRepositoryFactory userRepository)
     {
-        _contextFactory = contextFactory;
+        _userRepository = userRepository;
         
         // Restore session state
         IsAuthenticated = Preferences.Get(IsAuthenticatedKey, false);
@@ -47,8 +46,7 @@ public class AuthService : IAuthService
 
     public async Task<bool> HasAnyUsersAsync()
     {
-        using var context = await _contextFactory.CreateDbContextAsync();
-        return await context.Users.AnyAsync();
+        return await _userRepository.HasAnyUsersAsync();
     }
 
     public async Task<(bool Success, string Error)> RegisterAsync(string username, string password)
@@ -65,11 +63,8 @@ public class AuthService : IAuthService
         if (password.Length < 4)
             return (false, "Password must be at least 4 characters.");
 
-        using var context = await _contextFactory.CreateDbContextAsync();
-
         // Check if username already exists
-        var existingUser = await context.Users
-            .FirstOrDefaultAsync(u => u.Username.ToLower() == username.ToLower());
+        var existingUser = await _userRepository.GetByUsernameAsync(username);
 
         if (existingUser != null)
             return (false, "Username already taken.");
@@ -82,8 +77,7 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow
         };
 
-        context.Users.Add(user);
-        await context.SaveChangesAsync();
+        await _userRepository.CreateUserAsync(user);
 
         // Auto-login after registration
         SetAuthenticatedState(user);
@@ -99,10 +93,7 @@ public class AuthService : IAuthService
         if (string.IsNullOrWhiteSpace(password))
             return (false, "Password is required.");
 
-        using var context = await _contextFactory.CreateDbContextAsync();
-
-        var user = await context.Users
-            .FirstOrDefaultAsync(u => u.Username.ToLower() == username.ToLower());
+        var user = await _userRepository.GetByUsernameAsync(username);
 
         if (user == null)
             return (false, "Invalid username or password.");
@@ -112,7 +103,7 @@ public class AuthService : IAuthService
 
         // Update last login
         user.LastLoginAt = DateTime.UtcNow;
-        await context.SaveChangesAsync();
+        await _userRepository.UpdateUserAsync(user);
 
         SetAuthenticatedState(user);
 

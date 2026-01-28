@@ -1,17 +1,16 @@
-using Microsoft.EntityFrameworkCore;
-using JournalAppBlazor.Data;
 using JournalAppBlazor.Models;
+using JournalAppBlazor.Repositories;
 
 namespace JournalAppBlazor.Services;
 
 public class StreakService : IStreakService
 {
-    private readonly JournalDbContext _context;
+    private readonly IJournalEntryRepository _journalEntryRepository;
     private readonly IAuthService _authService;
 
-    public StreakService(JournalDbContext context, IAuthService authService)
+    public StreakService(IJournalEntryRepository journalEntryRepository, IAuthService authService)
     {
-        _context = context;
+        _journalEntryRepository = journalEntryRepository;
         _authService = authService;
     }
 
@@ -29,8 +28,7 @@ public class StreakService : IStreakService
         var currentDate = today;
 
         // Check if today has an entry
-        var hasEntryToday = await _context.JournalEntries
-            .AnyAsync(e => e.UserId == userId && e.Date.Date == currentDate);
+        var hasEntryToday = await _journalEntryRepository.ExistsForDateAsync(currentDate, userId);
         if (!hasEntryToday)
         {
             // If today doesn't have an entry, start from yesterday
@@ -40,8 +38,7 @@ public class StreakService : IStreakService
         // Count consecutive days backwards
         while (currentDate >= DateTime.MinValue.AddDays(1))
         {
-            var hasEntry = await _context.JournalEntries
-                .AnyAsync(e => e.UserId == userId && e.Date.Date == currentDate);
+            var hasEntry = await _journalEntryRepository.ExistsForDateAsync(currentDate, userId);
             if (hasEntry)
             {
                 streak++;
@@ -60,12 +57,7 @@ public class StreakService : IStreakService
     {
         var userId = GetCurrentUserId();
 
-        var entries = await _context.JournalEntries
-            .Where(e => e.UserId == userId)
-            .OrderBy(e => e.Date)
-            .Select(e => e.Date.Date)
-            .Distinct()
-            .ToListAsync();
+        var entries = await _journalEntryRepository.GetEntryDatesAsync(userId);
 
         if (!entries.Any())
             return 0;
@@ -100,11 +92,8 @@ public class StreakService : IStreakService
         var end = endDate?.Date ?? DateTime.Today;
 
         // Get all dates with entries in the range
-        var entryDates = await _context.JournalEntries
-            .Where(e => e.UserId == userId && e.Date.Date >= start && e.Date.Date <= end)
-            .Select(e => e.Date.Date)
-            .Distinct()
-            .ToListAsync();
+        var allDates = await _journalEntryRepository.GetEntryDatesAsync(userId);
+        var entryDates = allDates.Where(d => d >= start && d <= end).ToList();
 
         // Find all dates in range without entries
         var missedDays = new List<DateTime>();
@@ -128,8 +117,7 @@ public class StreakService : IStreakService
 
         var currentStreak = await GetCurrentStreakAsync();
         var longestStreak = await GetLongestStreakAsync();
-        var totalEntries = await _context.JournalEntries
-            .CountAsync(e => e.UserId == userId);
+        var totalEntries = await _journalEntryRepository.CountAsync(e => e.UserId == userId);
         var missedDays = await GetMissedDaysAsync(DateTime.Today.AddDays(-7), DateTime.Today); // Last 7 days
 
         return new StreakInfo

@@ -1,18 +1,17 @@
 using JournalAppBlazor.Models;
-using Microsoft.EntityFrameworkCore;
-using JournalAppBlazor.Data;
+using JournalAppBlazor.Repositories;
 using System.Text;
 
 namespace JournalAppBlazor.Services;
 
 public class ExportService : IExportService
 {
-    private readonly IDbContextFactory<JournalDbContext> _contextFactory;
+    private readonly IJournalEntryRepository _journalEntryRepository;
     private readonly IAuthService _authService;
 
-    public ExportService(IDbContextFactory<JournalDbContext> contextFactory, IAuthService authService)
+    public ExportService(IJournalEntryRepository journalEntryRepository, IAuthService authService)
     {
-        _contextFactory = contextFactory;
+        _journalEntryRepository = journalEntryRepository;
         _authService = authService;
     }
 
@@ -22,176 +21,68 @@ public class ExportService : IExportService
             ?? throw new UnauthorizedAccessException("User is not authenticated.");
     }
 
-    public async Task<string> ExportToHtmlAsync(DateTime startDate, DateTime endDate)
+    public async Task<string> GenerateHtmlAsync(DateTime startDate, DateTime endDate)
     {
         var userId = GetCurrentUserId();
         var username = _authService.CurrentUsername ?? "User";
 
-        await using var context = await _contextFactory.CreateDbContextAsync();
+        // Use repository's search method to get entries with all includes
+        var (entries, _) = await _journalEntryRepository.SearchAsync(
+            userId,
+            searchTerm: null,
+            startDate: startDate,
+            endDate: endDate,
+            moodIds: null,
+            tagIds: null,
+            pageNumber: 1,
+            pageSize: int.MaxValue);
 
-        var entries = await context.JournalEntries
-            .Where(e => e.UserId == userId)
-            .Include(e => e.PrimaryMood)
-            .Include(e => e.SecondaryMoods)
-                .ThenInclude(sm => sm.Mood)
-            .Include(e => e.Tags)
-                .ThenInclude(t => t.Tag)
-            .Where(e => e.Date >= startDate.Date && e.Date <= endDate.Date)
-            .OrderByDescending(e => e.Date)
-            .ToListAsync();
+        // Sort by date descending
+        entries = entries.OrderByDescending(e => e.Date).ToList();
 
         var html = new StringBuilder();
-
-        // HTML header with print-friendly CSS
-        html.AppendLine(@"<!DOCTYPE html>
-<html lang=""en"">
+        html.AppendLine($@"<!DOCTYPE html>
+<html>
 <head>
     <meta charset=""UTF-8"">
-    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
-    <title>Journal Export</title>
+    <title>{Esc(username)}'s Journal</title>
     <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #fff;
-        }
-        .header {
-            text-align: center;
-            border-bottom: 2px solid #3b82f6;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }
-        .header h1 { color: #1e40af; margin: 0; }
-        .header p { color: #6b7280; margin: 5px 0 0 0; }
-        .summary {
-            display: flex;
-            justify-content: space-between;
-            background: #f3f4f6;
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            color: #4b5563;
-        }
-        .entry {
-            border: 1px solid #e5e7eb;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            overflow: hidden;
-            page-break-inside: avoid;
-        }
-        .entry-header {
-            background: #f9fafb;
-            padding: 15px;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        .entry-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1e40af;
-            margin: 0;
-        }
-        .entry-date {
-            font-size: 13px;
-            color: #6b7280;
-            margin-top: 5px;
-        }
-        .entry-body { padding: 15px; }
-        .moods {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-bottom: 10px;
-        }
-        .mood {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
-            color: white;
-        }
-        .mood-positive { background: #22c55e; }
-        .mood-neutral { background: #3b82f6; }
-        .mood-negative { background: #ef4444; }
-        .tags {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-            margin-bottom: 15px;
-        }
-        .tag {
-            display: inline-block;
-            padding: 3px 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-size: 11px;
-            color: #4b5563;
-        }
-        .content {
-            white-space: pre-wrap;
-            line-height: 1.8;
-        }
-        .entry-footer {
-            font-size: 11px;
-            color: #9ca3af;
-            margin-top: 15px;
-            padding-top: 10px;
-            border-top: 1px solid #f3f4f6;
-        }
-        .no-entries {
-            text-align: center;
-            padding: 50px;
-            color: #6b7280;
-        }
-        .print-note {
-            background: #fef3c7;
-            border: 1px solid #f59e0b;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
-        @media print {
-            .print-note { display: none; }
-            body { padding: 0; }
-            .entry { break-inside: avoid; }
-        }
+        @page {{ margin: 0.75in; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; max-width: 100%; padding: 20px; color: #333; font-size: 14px; line-height: 1.5; }}
+        .header {{ text-align: center; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 2px solid #6366f1; }}
+        .header h1 {{ font-size: 24px; color: #4f46e5; margin-bottom: 8px; }}
+        .header p {{ color: #6b7280; font-size: 13px; }}
+        .entry {{ border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 20px; overflow: hidden; page-break-inside: avoid; }}
+        .entry-header {{ background: #f9fafb; padding: 14px 18px; border-bottom: 1px solid #e5e7eb; }}
+        .entry-title {{ font-size: 16px; font-weight: 600; color: #1e40af; margin-bottom: 4px; }}
+        .entry-date {{ font-size: 12px; color: #6b7280; }}
+        .entry-body {{ padding: 16px 18px; }}
+        .moods {{ margin-bottom: 10px; }}
+        .mood {{ display: inline-block; padding: 4px 12px; border-radius: 14px; font-size: 12px; font-weight: 500; color: white; margin-right: 6px; }}
+        .mood-positive {{ background: #22c55e; }}
+        .mood-neutral {{ background: #3b82f6; }}
+        .mood-negative {{ background: #ef4444; }}
+        .tags {{ margin-bottom: 12px; }}
+        .tag {{ display: inline-block; padding: 3px 10px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 11px; color: #4b5563; margin-right: 5px; }}
+        .content {{ white-space: pre-wrap; line-height: 1.7; font-size: 14px; }}
+        .no-entries {{ text-align: center; padding: 50px; color: #6b7280; }}
+        .print-tip {{ background: #fef3c7; border: 1px solid #fbbf24; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; }}
+        @media print {{ .print-tip {{ display: none; }} }}
     </style>
 </head>
-<body>");
-
-        // Header
-        html.AppendLine($@"
+<body>
+    <div class=""print-tip"">
+        <strong>To save as PDF:</strong> Press Cmd+P → Select ""Save as PDF"" from the dropdown
+    </div>
     <div class=""header"">
-        <h1>{EscapeHtml(username)}'s Journal</h1>
-        <p>Personal Journal Export</p>
+        <h1>{Esc(username)}'s Journal</h1>
+        <p>{startDate:MMMM dd, yyyy} — {endDate:MMMM dd, yyyy} &nbsp;•&nbsp; {entries.Count} {(entries.Count == 1 ? "entry" : "entries")}</p>
     </div>");
 
-        // Print instructions
-        html.AppendLine(@"
-    <div class=""print-note"">
-        <strong>To save as PDF:</strong> Press <kbd>Cmd+P</kbd> (Mac) or <kbd>Ctrl+P</kbd> (Windows), then select ""Save as PDF"" as the destination.
-    </div>");
-
-        // Summary
-        html.AppendLine($@"
-    <div class=""summary"">
-        <span>Date Range: {startDate:MMM dd, yyyy} - {endDate:MMM dd, yyyy}</span>
-        <span>Total Entries: {entries.Count}</span>
-    </div>");
-
-        if (entries.Count == 0)
+        if (!entries.Any())
         {
-            html.AppendLine(@"
-    <div class=""no-entries"">
-        <p>No journal entries found for this date range.</p>
-    </div>");
+            html.AppendLine(@"    <div class=""no-entries"">No journal entries found for this date range.</div>");
         }
         else
         {
@@ -208,23 +99,23 @@ public class ExportService : IExportService
                 html.AppendLine($@"
     <div class=""entry"">
         <div class=""entry-header"">
-            <h2 class=""entry-title"">{EscapeHtml(entry.Title)}</h2>
+            <div class=""entry-title"">{Esc(entry.Title)}</div>
             <div class=""entry-date"">{entry.Date:dddd, MMMM dd, yyyy}</div>
         </div>
         <div class=""entry-body"">
             <div class=""moods"">
-                <span class=""mood {moodClass}"">{EscapeHtml(entry.PrimaryMood.Name)}</span>");
+                <span class=""mood {moodClass}"">{Esc(entry.PrimaryMood.Name)}</span>");
 
-                foreach (var secondaryMood in entry.SecondaryMoods.Take(2))
+                foreach (var sm in entry.SecondaryMoods.Take(2))
                 {
-                    var secMoodClass = secondaryMood.Mood.Category switch
+                    var smClass = sm.Mood.Category switch
                     {
                         MoodCategory.Positive => "mood-positive",
                         MoodCategory.Neutral => "mood-neutral",
                         MoodCategory.Negative => "mood-negative",
                         _ => "mood-neutral"
                     };
-                    html.AppendLine($@"                <span class=""mood {secMoodClass}"">{EscapeHtml(secondaryMood.Mood.Name)}</span>");
+                    html.AppendLine($@"                <span class=""mood {smClass}"">{Esc(sm.Mood.Name)}</span>");
                 }
 
                 html.AppendLine(@"            </div>");
@@ -232,54 +123,23 @@ public class ExportService : IExportService
                 if (entry.Tags.Any())
                 {
                     html.AppendLine(@"            <div class=""tags"">");
-                    foreach (var tag in entry.Tags)
+                    foreach (var t in entry.Tags)
                     {
-                        html.AppendLine($@"                <span class=""tag"">#{EscapeHtml(tag.Tag.Name)}</span>");
+                        html.AppendLine($@"                <span class=""tag"">#{Esc(t.Tag.Name)}</span>");
                     }
                     html.AppendLine(@"            </div>");
                 }
 
-                html.AppendLine($@"            <div class=""content"">{EscapeHtml(entry.Content)}</div>
-            <div class=""entry-footer"">
-                Created: {entry.CreatedAt:MMM dd, yyyy h:mm tt}");
-
-                if (entry.UpdatedAt != entry.CreatedAt)
-                {
-                    html.AppendLine($@"                | Updated: {entry.UpdatedAt:MMM dd, yyyy h:mm tt}");
-                }
-
-                html.AppendLine(@"            </div>
+                html.AppendLine($@"            <div class=""content"">{Esc(entry.Content)}</div>
         </div>
     </div>");
             }
         }
 
-        // Close HTML
-        html.AppendLine(@"
-</body>
-</html>");
-
+        html.AppendLine(@"</body></html>");
         return html.ToString();
     }
 
-    private string EscapeHtml(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return string.Empty;
-        return text
-            .Replace("&", "&amp;")
-            .Replace("<", "&lt;")
-            .Replace(">", "&gt;")
-            .Replace("\"", "&quot;")
-            .Replace("'", "&#39;");
-    }
-
-    public async Task<string> SaveExportToFileAsync(string content, string fileName)
-    {
-        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        var filePath = Path.Combine(documentsPath, fileName);
-
-        await File.WriteAllTextAsync(filePath, content);
-
-        return filePath;
-    }
+    private string Esc(string text) => string.IsNullOrEmpty(text) ? "" : 
+        text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 }

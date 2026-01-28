@@ -1,17 +1,24 @@
-using Microsoft.EntityFrameworkCore;
-using JournalAppBlazor.Data;
 using JournalAppBlazor.Models;
+using JournalAppBlazor.Repositories;
 
 namespace JournalAppBlazor.Services;
 
 public class AnalyticsService : IAnalyticsService
 {
-    private readonly JournalDbContext _context;
+    private readonly IJournalEntryRepository _journalEntryRepository;
+    private readonly IJournalEntryTagRepository _journalEntryTagRepository;
+    private readonly IMoodRepository _moodRepository;
     private readonly IAuthService _authService;
 
-    public AnalyticsService(JournalDbContext context, IAuthService authService)
+    public AnalyticsService(
+        IJournalEntryRepository journalEntryRepository,
+        IJournalEntryTagRepository journalEntryTagRepository,
+        IMoodRepository moodRepository,
+        IAuthService authService)
     {
-        _context = context;
+        _journalEntryRepository = journalEntryRepository;
+        _journalEntryTagRepository = journalEntryTagRepository;
+        _moodRepository = moodRepository;
         _authService = authService;
     }
 
@@ -25,17 +32,7 @@ public class AnalyticsService : IAnalyticsService
     {
         var userId = GetCurrentUserId();
 
-        var query = _context.JournalEntries
-            .Where(e => e.UserId == userId)
-            .Include(e => e.PrimaryMood)
-            .AsQueryable();
-
-        if (startDate.HasValue)
-            query = query.Where(e => e.Date >= startDate.Value.Date);
-        if (endDate.HasValue)
-            query = query.Where(e => e.Date <= endDate.Value.Date);
-
-        var entries = await query.ToListAsync();
+        var entries = await _journalEntryRepository.GetWithPrimaryMoodAsync(userId, startDate, endDate);
 
         var positiveCount = entries.Count(e => e.PrimaryMood.Category == MoodCategory.Positive);
         var neutralCount = entries.Count(e => e.PrimaryMood.Category == MoodCategory.Neutral);
@@ -53,116 +50,65 @@ public class AnalyticsService : IAnalyticsService
     {
         var userId = GetCurrentUserId();
 
-        var query = _context.JournalEntries
-            .Where(e => e.UserId == userId)
-            .Include(e => e.PrimaryMood)
-            .AsQueryable();
+        var entries = await _journalEntryRepository.GetWithPrimaryMoodAsync(userId, startDate, endDate);
 
-        if (startDate.HasValue)
-            query = query.Where(e => e.Date >= startDate.Value.Date);
-        if (endDate.HasValue)
-            query = query.Where(e => e.Date <= endDate.Value.Date);
-
-        var mostFrequent = await query
-            .GroupBy(e => e.PrimaryMoodId)
-            .Select(g => new { MoodId = g.Key, Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .FirstOrDefaultAsync();
-
-        if (mostFrequent == null)
+        if (!entries.Any())
             return null;
 
-        return await _context.Moods.FindAsync(mostFrequent.MoodId);
+        var mostFrequentMoodId = entries
+            .GroupBy(e => e.PrimaryMoodId)
+            .OrderByDescending(g => g.Count())
+            .Select(g => g.Key)
+            .FirstOrDefault();
+
+        return await _moodRepository.GetByIdAsync(mostFrequentMoodId);
     }
 
     public async Task<List<TagUsage>> GetMostUsedTagsAsync(int count = 10, DateTime? startDate = null, DateTime? endDate = null)
     {
         var userId = GetCurrentUserId();
 
-        var query = _context.JournalEntryTags
-            .Include(t => t.Tag)
-            .Include(t => t.JournalEntry)
-            .Where(t => t.JournalEntry.UserId == userId)
-            .AsQueryable();
+        var tagUsageData = await _journalEntryTagRepository.GetTagUsageAsync(userId, startDate, endDate, count);
+        
+        var totalEntries = await _journalEntryRepository.CountAsync(e => 
+            e.UserId == userId &&
+            (!startDate.HasValue || e.Date >= startDate.Value.Date) &&
+            (!endDate.HasValue || e.Date <= endDate.Value.Date));
 
-        if (startDate.HasValue)
-            query = query.Where(t => t.JournalEntry.Date >= startDate.Value.Date);
-        if (endDate.HasValue)
-            query = query.Where(t => t.JournalEntry.Date <= endDate.Value.Date);
-
-        var totalEntries = await _context.JournalEntries
-            .Where(e => e.UserId == userId &&
-                       (!startDate.HasValue || e.Date >= startDate.Value.Date) &&
-                       (!endDate.HasValue || e.Date <= endDate.Value.Date))
-            .CountAsync();
-
-        var tagUsage = await query
-            .GroupBy(t => new { t.TagId, t.Tag.Name })
-            .Select(g => new TagUsage
-            {
-                TagId = g.Key.TagId,
-                TagName = g.Key.Name,
-                UsageCount = g.Count(),
-                Percentage = totalEntries > 0 ? (g.Count() * 100.0 / totalEntries) : 0
-            })
-            .OrderByDescending(t => t.UsageCount)
-            .Take(count)
-            .ToListAsync();
-
-        return tagUsage;
+        return tagUsageData.Select(t => new TagUsage
+        {
+            TagId = t.TagId,
+            TagName = t.TagName,
+            UsageCount = t.UsageCount,
+            Percentage = totalEntries > 0 ? (t.UsageCount * 100.0 / totalEntries) : 0
+        }).ToList();
     }
 
     public async Task<List<TagBreakdown>> GetTagBreakdownAsync(DateTime? startDate = null, DateTime? endDate = null)
     {
         var userId = GetCurrentUserId();
 
-        var query = _context.JournalEntries
-            .Where(e => e.UserId == userId)
-            .AsQueryable();
+        var tagUsageData = await _journalEntryTagRepository.GetTagUsageAsync(userId, startDate, endDate);
+        
+        var totalEntries = await _journalEntryRepository.CountAsync(e => 
+            e.UserId == userId &&
+            (!startDate.HasValue || e.Date >= startDate.Value.Date) &&
+            (!endDate.HasValue || e.Date <= endDate.Value.Date));
 
-        if (startDate.HasValue)
-            query = query.Where(e => e.Date >= startDate.Value.Date);
-        if (endDate.HasValue)
-            query = query.Where(e => e.Date <= endDate.Value.Date);
-
-        var totalEntries = await query.CountAsync();
-
-        var tagBreakdown = await _context.JournalEntryTags
-            .Include(t => t.Tag)
-            .Include(t => t.JournalEntry)
-            .Where(t => t.JournalEntry.UserId == userId &&
-                       (!startDate.HasValue || t.JournalEntry.Date >= startDate.Value.Date) &&
-                       (!endDate.HasValue || t.JournalEntry.Date <= endDate.Value.Date))
-            .GroupBy(t => new { t.TagId, t.Tag.Name })
-            .Select(g => new TagBreakdown
-            {
-                TagId = g.Key.TagId,
-                TagName = g.Key.Name,
-                EntryCount = g.Select(t => t.JournalEntryId).Distinct().Count(),
-                Percentage = totalEntries > 0 ? (g.Select(t => t.JournalEntryId).Distinct().Count() * 100.0 / totalEntries) : 0
-            })
-            .OrderByDescending(t => t.EntryCount)
-            .ToListAsync();
-
-        return tagBreakdown;
+        return tagUsageData.Select(t => new TagBreakdown
+        {
+            TagId = t.TagId,
+            TagName = t.TagName,
+            EntryCount = t.UsageCount,
+            Percentage = totalEntries > 0 ? (t.UsageCount * 100.0 / totalEntries) : 0
+        }).OrderByDescending(t => t.EntryCount).ToList();
     }
 
     public async Task<List<WordCountTrend>> GetWordCountTrendsAsync(DateTime? startDate = null, DateTime? endDate = null)
     {
         var userId = GetCurrentUserId();
 
-        var query = _context.JournalEntries
-            .Where(e => e.UserId == userId)
-            .AsQueryable();
-
-        if (startDate.HasValue)
-            query = query.Where(e => e.Date >= startDate.Value.Date);
-        if (endDate.HasValue)
-            query = query.Where(e => e.Date <= endDate.Value.Date);
-
-        var entries = await query
-            .OrderBy(e => e.Date)
-            .ToListAsync();
+        var entries = await _journalEntryRepository.GetByDateRangeAsync(userId, startDate, endDate);
 
         if (!entries.Any())
             return new List<WordCountTrend>();

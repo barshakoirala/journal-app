@@ -1,6 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using JournalAppBlazor.Data;
 using JournalAppBlazor.Models;
+using JournalAppBlazor.Repositories;
 
 namespace JournalAppBlazor.Services;
 
@@ -13,31 +12,25 @@ public interface IMoodService
 
 public class MoodService : IMoodService
 {
-    private readonly JournalDbContext _context;
+    private readonly IMoodRepository _moodRepository;
 
-    public MoodService(JournalDbContext context)
+    public MoodService(IMoodRepository moodRepository)
     {
-        _context = context;
+        _moodRepository = moodRepository;
     }
 
     public async Task<List<Mood>> GetAllMoodsAsync()
     {
-        return await _context.Moods
-            .OrderBy(m => m.Category)
-            .ThenBy(m => m.Name)
-            .ToListAsync();
+        return await _moodRepository.GetAllOrderedAsync();
     }
 
     public async Task<List<Mood>> GetMoodsByCategoryAsync(MoodCategory category)
     {
-        return await _context.Moods
-            .Where(m => m.Category == category)
-            .OrderBy(m => m.Name)
-            .ToListAsync();
+        return await _moodRepository.GetByCategoryAsync(category);
     }
 
     public async Task<Mood?> GetMoodByIdAsync(int id)
     {
-        return await _context.Moods.FindAsync(id);
+        return await _moodRepository.GetByIdAsync(id);
     }
 }

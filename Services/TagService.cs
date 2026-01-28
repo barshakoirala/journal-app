@@ -1,6 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using JournalAppBlazor.Data;
 using JournalAppBlazor.Models;
+using JournalAppBlazor.Repositories;
 
 namespace JournalAppBlazor.Services;
 
@@ -15,12 +14,12 @@ public interface ITagService
 
 public class TagService : ITagService
 {
-    private readonly JournalDbContext _context;
+    private readonly ITagRepository _tagRepository;
     private readonly IAuthService _authService;
 
-    public TagService(JournalDbContext context, IAuthService authService)
+    public TagService(ITagRepository tagRepository, IAuthService authService)
     {
-        _context = context;
+        _tagRepository = tagRepository;
         _authService = authService;
     }
 
@@ -32,21 +31,12 @@ public class TagService : ITagService
     public async Task<List<Tag>> GetAllTagsAsync()
     {
         var userId = GetCurrentUserId();
-
-        // Return pre-built tags (UserId is null) + user's custom tags
-        return await _context.Tags
-            .Where(t => t.IsPreBuilt || t.UserId == userId)
-            .OrderBy(t => t.IsPreBuilt ? 0 : 1)
-            .ThenBy(t => t.Name)
-            .ToListAsync();
+        return await _tagRepository.GetAllForUserAsync(userId);
     }
 
     public async Task<List<Tag>> GetPreBuiltTagsAsync()
     {
-        return await _context.Tags
-            .Where(t => t.IsPreBuilt)
-            .OrderBy(t => t.Name)
-            .ToListAsync();
+        return await _tagRepository.GetPreBuiltAsync();
     }
 
     public async Task<Tag> CreateTagAsync(string name)
@@ -67,28 +57,20 @@ public class TagService : ITagService
             UserId = userId
         };
 
-        _context.Tags.Add(tag);
-        await _context.SaveChangesAsync();
+        await _tagRepository.AddAsync(tag);
+        await _tagRepository.SaveChangesAsync();
         return tag;
     }
 
     public async Task<Tag?> GetTagByIdAsync(int id)
     {
         var userId = GetCurrentUserId();
-
-        // Allow access to pre-built tags or user's own tags
-        return await _context.Tags
-            .FirstOrDefaultAsync(t => t.Id == id && (t.IsPreBuilt || t.UserId == userId));
+        return await _tagRepository.GetByIdForUserAsync(id, userId);
     }
 
     public async Task<Tag?> GetTagByNameAsync(string name)
     {
         var userId = GetCurrentUserId();
-
-        // Check pre-built tags first, then user's custom tags
-        return await _context.Tags
-            .FirstOrDefaultAsync(t =>
-                t.Name.ToLower() == name.ToLower() &&
-                (t.IsPreBuilt || t.UserId == userId));
+        return await _tagRepository.GetByNameForUserAsync(name, userId);
     }
 }

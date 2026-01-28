@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using JournalAppBlazor.Data;
 using JournalAppBlazor.Services;
+using JournalAppBlazor.Repositories;
 
 namespace JournalAppBlazor;
 
@@ -43,15 +44,24 @@ public static class MauiProgram
 				options.UseSqlite($"Data Source={dbPath}")
 					.EnableSensitiveDataLogging());
 
-		// Register services
-		builder.Services.AddScoped<IJournalService, JournalService>();
-		builder.Services.AddScoped<IMoodService, MoodService>();
-		builder.Services.AddScoped<ITagService, TagService>();
-		builder.Services.AddScoped<IStreakService, StreakService>();
-		builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
-		builder.Services.AddScoped<IExportService, ExportService>();
-		builder.Services.AddSingleton<IThemeService, ThemeService>();
-		builder.Services.AddSingleton<IAuthService, AuthService>();
+			// Register repositories
+			builder.Services.AddScoped<IJournalEntryRepository, JournalEntryRepository>();
+			builder.Services.AddScoped<IJournalEntryMoodRepository, JournalEntryMoodRepository>();
+			builder.Services.AddScoped<IJournalEntryTagRepository, JournalEntryTagRepository>();
+			builder.Services.AddScoped<IMoodRepository, MoodRepository>();
+			builder.Services.AddScoped<ITagRepository, TagRepository>();
+			builder.Services.AddScoped<IUserRepository, UserRepository>();
+			builder.Services.AddSingleton<IUserRepositoryFactory, UserRepositoryFactory>();
+
+			// Register services
+			builder.Services.AddScoped<IJournalService, JournalService>();
+			builder.Services.AddScoped<IMoodService, MoodService>();
+			builder.Services.AddScoped<ITagService, TagService>();
+			builder.Services.AddScoped<IStreakService, StreakService>();
+			builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+			builder.Services.AddScoped<IExportService, ExportService>();
+			builder.Services.AddSingleton<IThemeService, ThemeService>();
+			builder.Services.AddSingleton<IAuthService, AuthService>();
 
 			Console.WriteLine("DEBUG: Building MauiApp...");
 			var app = builder.Build();
